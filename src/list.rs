@@ -1,13 +1,16 @@
 use core::fmt;
 use std::collections::LinkedList;
 
-const ID_NONE: i32 = i32::MIN;
-const ID_START: i32 = i32::MIN + 1;
-const ID_END: i32 = i32::MAX;
+const ID_START: u64 = u64::MIN;
+const ID_END: u64 = u64::MAX;
 
 struct UID {
     // id_list: Vec<i32>,
-    id: i32,
+    id: u64,
+}
+
+struct ITEM_ID {
+    id: Vec<u64>,
 }
 
 struct Content {
@@ -16,9 +19,11 @@ struct Content {
 
 struct Item {
     uid: UID,
-    left: UID,
-    right: UID,
-    origin: UID,
+    item_id: ITEM_ID,
+    clock: u64,
+    origin_left: ITEM_ID,
+    origin_right: ITEM_ID,
+    isDeleted: bool,
     content: Content,
 }
 
@@ -28,31 +33,35 @@ struct List {
 }
 
 impl List {
-    pub fn new() -> List {
+    pub fn new(uid: UID) -> List {
         let start_item = Item {
-            uid: UID { id: ID_START},
-            left: UID { id: ID_NONE },
-            right: UID { id: ID_END },
-            origin: UID {id: ID_NONE},
-            content: Content { content: "".to_string() },
+            uid: UID { id: uid.id },
+            item_id: ITEM_ID { id: vec![ID_START] },
+            clock: 0,
+            origin_left: ITEM_ID { id: vec![ID_START] },
+            origin_right: ITEM_ID { id: vec![ID_START] },
+            isDeleted: false,
+            content: Content {
+                content: "".to_string(),
+            },
         };
         let end_item = Item {
-            uid: UID { id: ID_END },
-            left: UID { id: ID_START },
-            right: UID { id: ID_NONE },
-            origin: UID {id: ID_START},
-            content: Content { content: "".to_string() },
+            uid: UID { id: uid.id },
+            item_id: ITEM_ID { id: vec![ID_END] },
+            clock: 0,
+            origin_left: ITEM_ID { id: vec![ID_END] },
+            origin_right: ITEM_ID { id: vec![ID_END] },
+            isDeleted: false,
+            content: Content {
+                content: "".to_string(),
+            },
         };
 
         let items = LinkedList::from([start_item, end_item]);
         List { items }
     }
 
-    pub fn insert() {
+    pub fn insert() {}
 
-    }
-
-    pub fn delete() {
-        
-    }
+    pub fn delete() {}
 }
