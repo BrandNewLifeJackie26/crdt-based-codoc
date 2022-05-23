@@ -1,8 +1,19 @@
 use crate::block::Block;
 use crate::block::BlockID;
 use std::collections::HashMap;
+
+pub type ClientID = u32;
+
 pub struct BlockList {
     list: Vec<Block>,
+}
+
+pub struct VectorClock {
+    clockMap: HashMap<ClientID, u32>,
+}
+
+impl VectorClock {
+    pub fn from () -> VectorClock {todo!()}
 }
 
 impl BlockList {
