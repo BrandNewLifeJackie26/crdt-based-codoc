@@ -1,7 +1,7 @@
 use core::fmt;
-use std::collections::{LinkedList, linked_list::IterMut};
+use std::collections::{LinkedList, linked_list::CursorMut};
 use rand::Rng;
-use intrusive_collections::linked_list::CursorMut;
+// use intrusive_collections::linked_list::{CursorMut, LinkedList};
 
 pub const ID_START: u128 = u128::MIN;
 pub const ID_END: u128 = u128::MAX;

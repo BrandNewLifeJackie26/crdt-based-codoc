@@ -16,13 +16,5 @@ impl Transaction {
         }
     }
 
-    pub fn insert(index: u32, content: String) {
-        // invoke BlockStore.insert
-    }
-
-    pub fn delete(index: u32) {}
-
     pub fn update() {}
-
-    fn split_node() {}
 }
