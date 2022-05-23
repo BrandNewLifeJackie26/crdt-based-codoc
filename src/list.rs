@@ -1,5 +1,4 @@
-use core::fmt;
-use std::collections::{LinkedList, linked_list::CursorMut};
+use std::collections::{LinkedList};
 use rand::Rng;
 // use intrusive_collections::linked_list::{CursorMut, LinkedList};
 
