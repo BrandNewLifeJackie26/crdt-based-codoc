@@ -23,6 +23,9 @@ pub struct Doc {
     client: ClientID,
     block_store: Arc<Mutex<BlockStore>>,
 
+    // list of peers that are collaborately editing the same doc
+    peers: Vec<ClientID>,
+
     // TODO: states: vector clock, pending updates, delete set, etc.
     vector_clock: VectorClock,
 }
@@ -33,6 +36,7 @@ impl Doc {
             name,
             client,
             block_store: Arc::new(Mutex::new(BlockStore::new())),
+            peers: vec![],
             vector_clock: VectorClock { clock_map: HashMap::new() }
         }
     }

@@ -40,7 +40,10 @@ impl BlockStore {
     // Delete the content of length len from pos
     pub fn delete(&self, pos: u32, len: u32) {}
 
-    // Split the block into a part of len
+    // optimization: Split the block into a part of len
     // and rest of the block
     pub fn split(&self, block: Block, len: u32) {}
+
+    // optimization: Squash list of blocks into one
+    pub fn squash(&self, block_list: Vec<Block>) {}
 }
