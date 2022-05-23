@@ -16,15 +16,9 @@ impl Transaction {
         }
     }
 
-    pub fn insert(index: u32, content: String) {
-        // invoke BlockStore.insert
-    }
-
-    pub fn delete(index: u32) {}
-
     pub fn update() {}
 
-    fn split_node() {}
+    pub fn delete() {}
 
     // takes in a vector clock, compare with its own vector clock, 
     // compute updates that need to be send

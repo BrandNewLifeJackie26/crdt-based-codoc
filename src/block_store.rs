@@ -1,5 +1,6 @@
 use crate::block::Block;
 use crate::block::BlockID;
+use crate::list::Content;
 use std::collections::HashMap;
 
 pub type ClientID = u32;
@@ -35,5 +36,13 @@ impl BlockStore {
         }
     }
 
-    pub fn insert(new_block: Block, pos: u32) {}
+    // Insert the content into pos in BlockStore
+    pub fn insert(content: Content, pos: u32) {}
+
+    // Delete the content of length len from pos
+    pub fn delete(pos: u32, len: u32) {}
+
+    // Split the block into a part of len
+    // and rest of the block
+    pub fn split(block: Block, len: u32) {}
 }
