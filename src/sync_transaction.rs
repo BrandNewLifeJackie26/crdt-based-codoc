@@ -1,18 +1,21 @@
 use crate::block::ClientID;
-use crate::block_store::BlockStore;
+use crate::doc::Doc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-pub struct Transaction {
-    block_store: Arc<Mutex<BlockStore>>,
+// SyncTransaction is used to sync updates (insertion and deletion) among different clients
+//
+// IMPORTANT: SyncTransaction will take in a created Doc and modify its states
+pub struct SyncTransaction {
+    doc: Arc<Mutex<Doc>>,
     client: ClientID,
 }
 
-impl Transaction {
-    pub fn new(client: ClientID, block_store: Arc<Mutex<BlockStore>>) -> Self {
-        Transaction {
+impl SyncTransaction {
+    pub fn new(client: ClientID, doc: Arc<Mutex<Doc>>) -> Self {
+        SyncTransaction {
             client,
-            block_store,
+            doc,
         }
     }
 

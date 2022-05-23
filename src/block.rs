@@ -1,5 +1,10 @@
 pub type ClientID = u32;
 
+#[derive(Clone)]
+pub struct Content {
+    pub content: String,
+}
+
 pub struct BlockID {
     client: ClientID,
     clock: u32,
@@ -11,16 +16,19 @@ impl BlockID {
     }
 }
 
+// Block is the basic building block of doc (e.g. text, xml element, etc.),
+// one block can be split to two blocks,
+// and two blocks can be merged into one
 pub struct Block {
     id: BlockID,
     left_origin: BlockID,
     right_origin: BlockID,
     is_deleted: bool,
-    content: String,
+    content: Content,
 }
 
 impl Block {
-    pub fn new(id: BlockID, left_origin: BlockID, right_origin: BlockID, content: String) -> Self {
+    pub fn new(id: BlockID, left_origin: BlockID, right_origin: BlockID, content: Content) -> Self {
         Block {
             id,
             left_origin,
@@ -30,6 +38,7 @@ impl Block {
         }
     }
 
+    // Delete the current block (mark as deleted)
     pub fn delete(&mut self) {
         self.is_deleted = false;
     }

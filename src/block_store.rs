@@ -1,20 +1,12 @@
-use crate::block::Block;
-use crate::block::BlockID;
-use crate::list::Content;
+use crate::block::{Block, ClientID, BlockID, Content};
 use std::collections::HashMap;
 
-pub type ClientID = u32;
-
+// BlockList is a list of blocks,
+// the position in the vector indicates its spatial order
+//
+// i.e. if block represents text, ["1", "2"] represents string "12"
 pub struct BlockList {
     list: Vec<Block>,
-}
-
-pub struct VectorClock {
-    clockMap: HashMap<ClientID, u32>,
-}
-
-impl VectorClock {
-    pub fn from () -> VectorClock {todo!()}
 }
 
 impl BlockList {
@@ -23,26 +15,32 @@ impl BlockList {
     }
 }
 
+// BlockStore is a collection of current blocks
+// 1. kvStore stores a mapping from client to the changes the client made
+// 2. totalStore stores the SPATIAL order of the blocks
+//
+// IMPORTANT: BlockStore is only a collections of data, it is stateless (states are in Doc)
+// it also cannot be modified except by Doc
 pub struct BlockStore {
-    kvStore: HashMap<BlockID, BlockList>,
-    totalStore: BlockList,
+    kv_store: HashMap<ClientID, BlockList>,
+    total_store: BlockList,
 }
 
 impl BlockStore {
     pub fn new() -> Self {
         BlockStore {
-            kvStore: HashMap::new(),
-            totalStore: BlockList::new(),
+            kv_store: HashMap::new(),
+            total_store: BlockList::new(),
         }
     }
 
     // Insert the content into pos in BlockStore
-    pub fn insert(content: Content, pos: u32) {}
+    pub fn insert(&self, content: Content, pos: u32) {}
 
     // Delete the content of length len from pos
-    pub fn delete(pos: u32, len: u32) {}
+    pub fn delete(&self, pos: u32, len: u32) {}
 
     // Split the block into a part of len
     // and rest of the block
-    pub fn split(block: Block, len: u32) {}
+    pub fn split(&self, block: Block, len: u32) {}
 }
