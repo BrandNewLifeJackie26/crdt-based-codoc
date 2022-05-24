@@ -1,3 +1,4 @@
+use crate::Block;
 use crate::block::ClientID;
 use crate::doc::Doc;
 use std::sync::Arc;
