@@ -1,5 +1,9 @@
-use crate::{block_store::BlockStore, sync_transaction::SyncTransaction, block::{ClientID, Content}};
-use std::{sync::Arc, collections::HashMap};
+use crate::{
+    block::{ClientID, Content},
+    block_store::BlockStore,
+    sync_transaction::SyncTransaction,
+};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 // VectorClock represents the latest clocks of all clients,
@@ -9,7 +13,9 @@ pub struct VectorClock {
 }
 
 impl VectorClock {
-    pub fn from () -> VectorClock {todo!()}
+    pub fn from() -> VectorClock {
+        todo!()
+    }
 }
 
 // Doc is the collaborative edited document,
@@ -37,7 +43,9 @@ impl Doc {
             client,
             block_store: Arc::new(Mutex::new(BlockStore::new())),
             peers: vec![],
-            vector_clock: VectorClock { clock_map: HashMap::new() }
+            vector_clock: VectorClock {
+                clock_map: HashMap::new(),
+            },
         }
     }
 
