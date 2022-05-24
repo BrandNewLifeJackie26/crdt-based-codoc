@@ -1,5 +1,5 @@
 use crate::utils::{ClientID, Peer, Updates};
-use crate::{block::Content, block_store::BlockStore};
+use crate::{block::Content, block_store::BlockStore, Block, BlockID};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -54,20 +54,76 @@ impl Doc {
 
     /* Local operations */
     // Insert the content into pos in BlockStore
-    pub async fn insert(&self, content: Content, pos: u32) {
-        let store = self.block_store.clone();
-        let store_lock = store.lock().await;
-        (*store_lock).insert(content.clone(), pos);
+    pub async fn insert(&mut self, content: Content, pos: u32) {
+        // let store = self.block_store.clone();
+        // let mut store_lock = store.lock().await;
+        // (*store_lock).insert(self.client, content.clone(), pos);
         // TODO: update vector clock
-        todo!()
+        // todo!()
+    }
+
+    // Insert the content into pos in BlockStore
+    // TODO: Arc<Mutex<BlockList>>
+    pub async fn insert_local(&mut self, content: Content, pos: u32) {
+        let store = self.block_store.clone();
+        let mut store_lock = store.lock().await;
+
+        // Find the correct block to insert
+        let mut i = 0 as usize;
+        let mut curr = 0;
+
+        while curr < pos && i < (*store_lock).total_store.list.len() {
+            if !(*store_lock).total_store.list[i].is_deleted {
+                curr += (*store_lock).total_store.list[i].content.content.len() as u32;
+            }
+            i += 1;
+        }
+
+        // Create a new block and insert it to total_store
+        let mut new_block = Block {
+            id: BlockID {
+                client: self.client,
+                clock: (*store_lock).get_current_clock() + 1,
+            },
+            left_origin: None,
+            right_origin: None,
+            is_deleted: false,
+            content,
+        };
+
+        // TODO:
+        if i == (*store_lock).total_store.list.len() {
+            // Append to the end
+            if i > 0 {
+                let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
+                new_block.left_origin = left_id.clone();
+                (*store_lock).insert(new_block, left_id);
+            } else {
+                (*store_lock).insert(new_block, None);
+            }
+        } else if curr == pos {
+            // Insert to i-th position in total_store
+            let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
+            new_block.left_origin = left_id.clone();
+            new_block.right_origin = Some((*store_lock).total_store.list[i].id.clone());
+            (*store_lock).insert(new_block, left_id);
+        } else {
+            // TODO: split the i-th block and insert
+        }
     }
 
     // Delete the content of length len from pos
-    pub async fn delete(&self, pos: u32, len: u32) {
+    pub async fn delete(&mut self, pos: u32, len: u32) {
         let store = self.block_store.clone();
         let store_lock = store.lock().await;
-        (*store_lock).delete(pos, len);
+        (*store_lock).delete(self.client, pos, len);
         // TODO: update vector clock
-        todo!()
+        // todo!()
+    }
+
+    pub async fn to_string(&self) -> String {
+        let store = self.block_store.clone();
+        let store_lock = store.lock().await;
+        (*store_lock).to_string()
     }
 }

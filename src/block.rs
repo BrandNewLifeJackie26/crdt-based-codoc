@@ -5,10 +5,10 @@ pub struct Content {
     pub content: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct BlockID {
-    client: ClientID,
-    clock: u32,
+    pub client: ClientID,
+    pub clock: u32,
 }
 
 impl BlockID {
@@ -23,14 +23,19 @@ impl BlockID {
 #[derive(Clone, Serialize)]
 pub struct Block {
     pub id: BlockID,
-    pub left_origin: BlockID,
-    pub right_origin: BlockID,
+    pub left_origin: Option<BlockID>,
+    pub right_origin: Option<BlockID>,
     pub is_deleted: bool,
     pub content: Content,
 }
 
 impl Block {
-    pub fn new(id: BlockID, left_origin: BlockID, right_origin: BlockID, content: Content) -> Self {
+    pub fn new(
+        id: BlockID,
+        left_origin: Option<BlockID>,
+        right_origin: Option<BlockID>,
+        content: Content,
+    ) -> Self {
         Block {
             id,
             left_origin,
