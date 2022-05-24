@@ -26,7 +26,7 @@ mod local_tests {
         let cid = 1 as ClientID;
         let mut doc = Doc::new("text".to_string(), cid);
 
-        doc.insert(
+        doc.insert_local(
             Content {
                 content: "1".to_string(),
             },
@@ -35,7 +35,7 @@ mod local_tests {
         .await;
         assert_eq!(doc.to_string().await, "1".to_string());
 
-        doc.insert(
+        doc.insert_local(
             Content {
                 content: "2".to_string(),
             },
@@ -45,7 +45,7 @@ mod local_tests {
         assert_eq!(doc.to_string().await, "12".to_string());
 
         // Insert pos is larger than length
-        doc.insert(
+        doc.insert_local(
             Content {
                 content: "3".to_string(),
             },
@@ -54,7 +54,7 @@ mod local_tests {
         .await;
         assert_eq!(doc.to_string().await, "123".to_string());
 
-        doc.insert(
+        doc.insert_local(
             Content {
                 content: "4".to_string(),
             },

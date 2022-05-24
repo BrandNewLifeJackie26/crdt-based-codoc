@@ -37,15 +37,8 @@ impl BlockStore {
         }
     }
 
-    pub fn get_current_clock(&self) -> u32 {
-        let mut clock = 0;
-        for block in self.total_store.list.iter() {
-            clock += block.content.content.len();
-        }
-        clock as u32
-    }
-
     pub fn insert(&mut self, block: Block, left_id: Option<BlockID>) {
+        let block_id = block.clone().id;
         match left_id {
             Some(left_id) => {
                 let mut i = 0 as usize;
@@ -55,12 +48,29 @@ impl BlockStore {
                     }
                     i += 1;
                 }
-                self.total_store.list.insert(i + 1, block);
+                self.total_store.list.insert(i + 1, block.clone());
             }
             None => {
-                self.total_store.list.insert(0, block);
+                self.total_store.list.insert(0, block.clone());
             }
         }
+
+        // Update BlockStore state
+        self.block_map.insert(block_id.clone(), block.clone());
+        let client_block_list = self.kv_store.get_mut(&block_id.client);
+        match client_block_list {
+            None => {
+                self.kv_store.insert(
+                    block_id.client,
+                    BlockList {
+                        list: vec![block.clone()],
+                    },
+                );
+            }
+            Some(client_block_list) => {
+                client_block_list.list.push(block.clone());
+            }
+        };
     }
 
     // Delete the content of length len from pos
@@ -68,10 +78,16 @@ impl BlockStore {
 
     // optimization: Split the block into a part of len
     // and rest of the block
-    pub fn split(&self, client: ClientID, block: Block, len: u32) {}
+    pub fn split(&self, block_id: BlockID, len: u32) {
+        // let block = self.block_map.get(&block_id);
+        // if let Some(block) = block {
+        //     let old_content = String::from(&block.content.content[..len as usize]);
+        //     let new_content = String::from(&block.content.content[len as usize..]);
+        // }
+    }
 
     // optimization: Squash list of blocks into one
-    pub fn squash(&self, client: ClientID, block_list: Vec<Block>) {}
+    pub fn squash(&self, block_ids: Vec<BlockID>) {}
 
     // Form a string by connecting all elements in the current BlockList
     pub fn to_string(&self) -> String {
