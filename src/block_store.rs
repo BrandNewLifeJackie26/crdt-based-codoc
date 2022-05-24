@@ -1,4 +1,5 @@
-use crate::block::{Block, ClientID, BlockID, Content};
+use crate::block::{Block, Content};
+use crate::utils::ClientID;
 use std::collections::HashMap;
 
 // BlockList is a list of blocks,
@@ -6,7 +7,7 @@ use std::collections::HashMap;
 //
 // i.e. if block represents text, ["1", "2"] represents string "12"
 pub struct BlockList {
-    list: Vec<Block>,
+    pub list: Vec<Block>,
 }
 
 impl BlockList {
@@ -22,8 +23,8 @@ impl BlockList {
 // IMPORTANT: BlockStore is only a collections of data, it is stateless (states are in Doc)
 // it also cannot be modified except by Doc
 pub struct BlockStore {
-    kv_store: HashMap<ClientID, BlockList>,
-    total_store: BlockList,
+    pub kv_store: HashMap<ClientID, BlockList>,
+    pub total_store: BlockList,
 }
 
 impl BlockStore {
@@ -39,11 +40,4 @@ impl BlockStore {
 
     // Delete the content of length len from pos
     pub fn delete(&self, pos: u32, len: u32) {}
-
-    // optimization: Split the block into a part of len
-    // and rest of the block
-    pub fn split(&self, block: Block, len: u32) {}
-
-    // optimization: Squash list of blocks into one
-    pub fn squash(&self, block_list: Vec<Block>) {}
 }

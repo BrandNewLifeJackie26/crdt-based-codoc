@@ -1,10 +1,11 @@
-pub type ClientID = u32;
-
-#[derive(Clone)]
+use crate::utils::ClientID;
+use serde::Serialize;
+#[derive(Clone, Serialize)]
 pub struct Content {
     pub content: String,
 }
 
+#[derive(Clone, Serialize)]
 pub struct BlockID {
     client: ClientID,
     clock: u32,
@@ -19,12 +20,13 @@ impl BlockID {
 // Block is the basic building block of doc (e.g. text, xml element, etc.),
 // one block can be split to two blocks,
 // and two blocks can be merged into one
+#[derive(Clone, Serialize)]
 pub struct Block {
-    id: BlockID,
-    left_origin: BlockID,
-    right_origin: BlockID,
-    is_deleted: bool,
-    content: Content,
+    pub id: BlockID,
+    pub left_origin: BlockID,
+    pub right_origin: BlockID,
+    pub is_deleted: bool,
+    pub content: Content,
 }
 
 impl Block {

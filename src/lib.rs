@@ -1,20 +1,22 @@
-pub mod list;
 pub mod block;
 pub mod block_store;
 pub mod doc;
+pub mod list;
 pub mod sync_transaction;
+pub mod txn_rpc;
+pub mod utils;
+pub mod zk_conn;
 pub use crate::block::Block;
 pub use crate::block::BlockID;
-pub use crate::block::ClientID;
 pub use crate::block_store::BlockStore;
-
 
 #[cfg(test)]
 mod local_tests {
-    use crate::list::*;
-    use crate::block::{ClientID, BlockID, Block};
+    use crate::block::{Block, BlockID};
     use crate::block_store;
     use crate::doc::Doc;
+    use crate::list::*;
+    use crate::utils::ClientID;
 
     // Local insert to a single doc,
     // there is no need to use transaction if no sync is needed
@@ -22,7 +24,7 @@ mod local_tests {
     fn local_insert() {
         let cid = 1 as ClientID;
         let doc = Doc::new("text".to_string(), cid);
-        
+
         // let uid = UID { id: 1 };
         // let text = List::new(uid.clone());
 

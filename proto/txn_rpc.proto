@@ -1,0 +1,18 @@
+// DO NOT MODIFY
+syntax = "proto3";
+
+// DO NOT MODIFY
+package txn_rpc;
+
+message pullRequest {
+    uint32 client_id = 1;
+    string vector_clock = 2;
+}
+
+message pullResponse {
+    string updates = 1;
+}
+
+service TxnService {
+    rpc get_remote_updates(pullRequest) returns (pullResponse);
+}

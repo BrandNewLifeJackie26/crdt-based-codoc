@@ -1,15 +1,21 @@
-use crate::{block_store::BlockStore, sync_transaction::SyncTransaction, block::{ClientID, Content}};
-use std::{sync::Arc, collections::HashMap};
+use crate::utils::{ClientID, Peer, Updates};
+use crate::{block::Content, block_store::BlockStore};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 // VectorClock represents the latest clocks of all clients,
 // it is used during synchronization to find the missing changes
+
+use serde::{Deserialize, Serialize};
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VectorClock {
-    clock_map: HashMap<ClientID, u32>,
+    pub clock_map: HashMap<ClientID, u32>,
 }
 
 impl VectorClock {
-    pub fn from () -> VectorClock {todo!()}
+    pub fn from() -> VectorClock {
+        todo!()
+    }
 }
 
 // Doc is the collaborative edited document,
@@ -19,15 +25,17 @@ impl VectorClock {
 //
 // IMPORTANT: Doc = block_store + state
 pub struct Doc {
-    name: String,
-    client: ClientID,
-    block_store: Arc<Mutex<BlockStore>>,
+    pub name: String,
+    pub client: ClientID,
+    pub block_store: Arc<Mutex<BlockStore>>,
 
     // list of peers that are collaborately editing the same doc
-    peers: Vec<ClientID>,
+    pub peers: Vec<Peer>,
+
+    pub pending_updates: Updates,
 
     // TODO: states: vector clock, pending updates, delete set, etc.
-    vector_clock: VectorClock,
+    pub vector_clock: VectorClock,
 }
 
 impl Doc {
@@ -37,7 +45,10 @@ impl Doc {
             client,
             block_store: Arc::new(Mutex::new(BlockStore::new())),
             peers: vec![],
-            vector_clock: VectorClock { clock_map: HashMap::new() }
+            pending_updates: vec![],
+            vector_clock: VectorClock {
+                clock_map: HashMap::new(),
+            },
         }
     }
 
