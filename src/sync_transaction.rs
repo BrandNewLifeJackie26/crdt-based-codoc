@@ -61,7 +61,6 @@ impl SyncTransaction {
             }
 
             if let Some(new_channel) = real_channel.get(&client.client_id) {
-                // send migration finish signal to successor
                 let mut client = TxnServiceClient::new(new_channel.clone());
                 let vector_clock = self.doc.lock().await;
                 let clock_serialized = serde_json::to_string(&vector_clock.vector_clock);
