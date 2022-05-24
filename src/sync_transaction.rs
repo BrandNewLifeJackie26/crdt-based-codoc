@@ -35,26 +35,28 @@ impl SyncTransaction {
     // request all updates from its peers and deduplicate
     // resolve all conflicts
     pub async fn sync(&self) {
-        // for all peers call on rpc to get all updates
+        // get all the peers that are editing the same doc
         let mut real_channel = self.channels.lock().await;
         let peers;
         {
             let real_doc = self.doc.lock().await;
             peers = real_doc.peers.clone();
         }
+
+        // for all peers call on rpc to get all updates
         for client in peers.into_iter() {
+            // if connection already established, reuse the connection
             let conn = real_channel.get(&client.client_id);
             match conn {
                 Some(conn) => {
                     // just reuse
                 }
                 None => {
-                    // todo: look up the address of the peer
-                    let endpoint = Endpoint::from_shared("ip addess");
+                    let endpoint = Endpoint::from_shared(client.ip_addr);
                     if let Ok(ep) = endpoint {
                         let temp = ep.connect().await;
-                        if let Ok(res) = temp {
-                            (*real_channel).insert(client.client_id, res);
+                        if let Ok(ch) = temp {
+                            (*real_channel).insert(client.client_id, ch);
                         }
                     }
                 }
@@ -62,9 +64,10 @@ impl SyncTransaction {
 
             if let Some(new_channel) = real_channel.get(&client.client_id) {
                 let mut client = TxnServiceClient::new(new_channel.clone());
-                let vector_clock = self.doc.lock().await;
-                let clock_serialized = serde_json::to_string(&vector_clock.vector_clock);
+                let local_doc = self.doc.lock().await;
+                let clock_serialized = serde_json::to_string(&local_doc.vector_clock);
                 match clock_serialized {
+                    // serialize the local vector clock send our through rpc
                     Ok(clock_serialized) => {
                         let req = tonic::Request::new(txn_rpc::PullRequest {
                             client_id: self.client,
@@ -73,12 +76,19 @@ impl SyncTransaction {
                         let resp = client.get_remote_updates(req).await;
                         match resp {
                             Ok(value) => {
-                                // TODO: start resolve conflict:
+                                let remote_updates: Result<Updates, serde_json::Error> =
+                                    serde_json::from_str(&value.into_inner().updates);
+                                match remote_updates {
+                                    Ok(remote_updates) => {
+                                        self.update_remote(remote_updates);
+                                    }
+                                    Err(_) => println!("serde deserialization error"),
+                                }
                             }
                             Err(_) => println!("rpc error"),
                         };
                     }
-                    Err(_) => println!("serialization error"),
+                    Err(_) => println!("serde serialization error"),
                 }
             }
         }
@@ -86,44 +96,46 @@ impl SyncTransaction {
 
     // update peers' modifications on local copy
     // don;t need to deal with conflicts
-    pub fn update_remote(&self, updates: Updates) {
-        let mut delete_list: Vec<Block> = vec![];
+    pub async fn update_remote(&self, updates: Updates) {
+        let mut delete_list: Updates = vec![];
+        let mut update_list: Updates = vec![];
         for update in updates {
             if update.is_deleted {
                 delete_list.push(update);
             } else {
-                // call on doc
+                update_list.push(update);
             }
         }
-    }
 
-    // obtain a delete set from update_remote(), and apply peer deletions
-    pub fn delete_remote(&mut self, mut update: Updates) {}
+        let mut local_doc = self.doc.lock().await;
+        local_doc.insert_remote(update_list);
+        local_doc.delete_remote(delete_list);
+    }
 
     // takes in a vector clock, compare with its own vector clock,
     // compute updates that need to be send
-    async fn compute_diff(&self, remote_clocks: VectorClock) -> Updates {
+    pub async fn compute_diff(&self, remote_clocks: VectorClock) -> Updates {
         // get its own state vector
-        let clocks;
+        let local_clocks;
         {
             let local_doc = self.doc.lock().await;
-            clocks = local_doc.vector_clock.clone();
+            local_clocks = local_doc.vector_clock.clone();
         }
-
         let mut res: Updates = vec![];
+
         // compute the difference
-        for (key, local_clock) in clocks.clock_map.into_iter() {
-            let remote_clock = remote_clocks.clock_map.get(&key);
+        for (client_id, local_clock) in local_clocks.clock_map.into_iter() {
+            let remote_clock = remote_clocks.clock_map.get(&client_id);
             match remote_clock {
                 Some(remote_clock) => {
                     if *remote_clock < local_clock {
                         // need to send the remaining part to the counterpart
-                        res.extend(self.construct_updates(*remote_clock + 1, key).await);
+                        res.extend(self.construct_updates(*remote_clock + 1, client_id).await);
                     }
                 }
                 None => {
                     // need to forword all they have to the requester
-                    res.extend(self.construct_updates(0, key).await);
+                    res.extend(self.construct_updates(0, client_id).await);
                 }
             }
         }
@@ -155,7 +167,9 @@ impl SyncTransaction {
                     }
                 }
             }
-            None => {}
+            None => {
+                // should not happen
+            }
         }
         return res;
     }

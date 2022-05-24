@@ -59,7 +59,7 @@ impl Doc {
     }
 
     /* Local operations */
-    pub async fn insert(&mut self, content: Content, pos: u32) {
+    pub async fn insert_remote(&mut self, update: Updates) {
         // let store = self.block_store.clone();
         // let mut store_lock = store.lock().await;
         // (*store_lock).insert(self.client, content.clone(), pos);
@@ -131,7 +131,7 @@ impl Doc {
 
     // Delete the content of length len from pos
     pub async fn delete(&mut self, pos: u32, len: u32) {}
-    pub async fn delete_remote(&mut self, pos: u32, len: u32) {
+    pub async fn delete_remote(&mut self, update: Updates) {
         // let store = self.block_store.clone();
         // let mut store_lock = store.lock().await;
 
