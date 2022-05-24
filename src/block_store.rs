@@ -74,7 +74,7 @@ impl BlockStore {
     }
 
     // Delete the content of length len from pos
-    pub fn delete(&self, block: Block) {}
+    pub fn delete(&self, block_id: BlockID) {}
 
     // optimization: Split the block into a part of len
     // and rest of the block
