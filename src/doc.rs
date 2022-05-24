@@ -16,6 +16,15 @@ impl VectorClock {
     pub fn from() -> VectorClock {
         todo!()
     }
+
+    fn increment(&mut self, client: ClientID) {
+        self.clock_map
+            .insert(
+                client,
+                self.clock_map.get(&client).cloned().unwrap_or(0) + 1,
+            )
+            .unwrap();
+    }
 }
 
 // Doc is the collaborative edited document,
@@ -28,12 +37,9 @@ pub struct Doc {
     pub name: String,
     pub client: ClientID,
     pub block_store: Arc<Mutex<BlockStore>>,
-
     // list of peers that are collaborately editing the same doc
     pub peers: Vec<Peer>,
-
     pub pending_updates: Updates,
-
     // TODO: states: vector clock, pending updates, delete set, etc.
     pub vector_clock: VectorClock,
 }
@@ -53,7 +59,6 @@ impl Doc {
     }
 
     /* Local operations */
-    // Insert the content into pos in BlockStore
     pub async fn insert(&mut self, content: Content, pos: u32) {
         // let store = self.block_store.clone();
         // let mut store_lock = store.lock().await;
@@ -73,6 +78,7 @@ impl Doc {
         let mut curr = 0;
 
         while curr < pos && i < (*store_lock).total_store.list.len() {
+            // TODO: what if pos < curr and the loop already break?
             if !(*store_lock).total_store.list[i].is_deleted {
                 curr += (*store_lock).total_store.list[i].content.content.len() as u32;
             }
@@ -83,12 +89,12 @@ impl Doc {
         let mut new_block = Block {
             id: BlockID {
                 client: self.client,
-                clock: (*store_lock).get_current_clock() + 1,
+                clock: store_lock.kv_store.get(&self.client).unwrap().list.len() as u32 + 1,
             },
             left_origin: None,
             right_origin: None,
             is_deleted: false,
-            content,
+            content: content.clone(),
         };
 
         // TODO:
@@ -108,17 +114,57 @@ impl Doc {
             new_block.right_origin = Some((*store_lock).total_store.list[i].id.clone());
             (*store_lock).insert(new_block, left_id);
         } else {
-            // TODO: split the i-th block and insert
+            // Have to split total_store[i-1]
+            let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
+            let left_content_len = (*store_lock).total_store.list.len();
+            new_block.left_origin = left_id.clone();
+            new_block.right_origin = Some(BlockID::new(
+                left_id.clone().unwrap().client,
+                left_id.clone().unwrap().clock + left_content_len as u32 - (curr - pos),
+            ));
+            (*store_lock).insert(new_block, left_id);
         }
+
+        // Update vector clock
+        self.vector_clock.increment(self.client);
     }
 
     // Delete the content of length len from pos
-    pub async fn delete(&mut self, pos: u32, len: u32) {
-        let store = self.block_store.clone();
-        let store_lock = store.lock().await;
-        (*store_lock).delete(self.client, pos, len);
-        // TODO: update vector clock
-        // todo!()
+    pub async fn delete(&mut self, pos: u32, len: u32) {}
+    pub async fn delete_remote(&mut self, pos: u32, len: u32) {
+        // let store = self.block_store.clone();
+        // let mut store_lock = store.lock().await;
+
+        // // Find the correct block to delete
+        // // The block may need to be splitted
+        // let mut i = 0 as usize;
+        // let mut curr = 0;
+
+        // while curr < pos && i < (*store_lock).total_store.list.len() {
+        //     // TODO: what if pos < curr and the loop already break?
+        //     if !(*store_lock).total_store.list[i].is_deleted {
+        //         curr += (*store_lock).total_store.list[i].content.content.len() as u32;
+        //     }
+        //     i += 1;
+        // }
+
+        // if curr == pos {
+        //     // Delete to i-th position in total_store
+        //     (*store_lock).delete((*store_lock).total_store.list[i - 1].clone());
+        // } else {
+        //     // Have to split total_store[i-1]
+        //     let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
+        //     let left_content_len = (*store_lock).total_store.list.len();
+        //     new_block.left_origin = left_id.clone();
+        //     new_block.right_origin = Some(BlockID::new(
+        //         left_id.clone().unwrap().client,
+        //         left_id.clone().unwrap().clock + left_content_len as u32 - (curr - pos),
+        //     ));
+        //     (*store_lock).insert(new_block, left_id);
+        // }
+
+        // Update vector clock
+        // self.vector_clock.increment(self.client);
     }
 
     pub async fn to_string(&self) -> String {
