@@ -18,12 +18,10 @@ impl VectorClock {
     }
 
     fn increment(&mut self, client: ClientID) {
-        self.clock_map
-            .insert(
-                client,
-                self.clock_map.get(&client).cloned().unwrap_or(0) + 1,
-            )
-            .unwrap();
+        self.clock_map.insert(
+            client,
+            self.clock_map.get(&client).cloned().unwrap_or(0) + 1,
+        );
     }
 }
 
@@ -111,7 +109,9 @@ impl Doc {
         };
 
         // TODO:
-        if i == (*store_lock).total_store.list.len() {
+        if i == (*store_lock).total_store.list.len()
+            && curr == (*store_lock).to_string().len() as u32
+        {
             // Append to the end
             if i > 0 {
                 let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());

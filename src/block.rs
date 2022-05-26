@@ -1,11 +1,11 @@
 use crate::utils::ClientID;
 use serde::{Deserialize, Serialize};
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Content {
     pub content: String,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Hash, Debug)]
 pub struct BlockID {
     pub client: ClientID,
     pub clock: u32,
@@ -17,10 +17,12 @@ impl BlockID {
     }
 }
 
+pub type BlockPtr = Box<Block>;
+
 // Block is the basic building block of doc (e.g. text, xml element, etc.),
 // one block can be split to two blocks,
 // and two blocks can be merged into one
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Block {
     pub id: BlockID,
     pub left_origin: Option<BlockID>,
