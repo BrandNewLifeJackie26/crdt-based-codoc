@@ -5,7 +5,7 @@ pub struct Content {
     pub content: String,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct BlockID {
     pub client: ClientID,
     pub clock: u32,

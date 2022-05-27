@@ -10,6 +10,16 @@ pub struct PullResponse {
     #[prost(string, tag = "1")]
     pub updates: ::prost::alloc::string::String,
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RegisterRequest {
+    #[prost(string, tag = "2")]
+    pub peer_list: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Status {
+    #[prost(bool, tag = "1")]
+    pub succ: bool,
+}
 #[doc = r" Generated client implementations."]
 pub mod txn_service_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
@@ -85,6 +95,20 @@ pub mod txn_service_client {
                 http::uri::PathAndQuery::from_static("/txn_rpc.TxnService/get_remote_updates");
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn sync_peer_list(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RegisterRequest>,
+        ) -> Result<tonic::Response<super::Status>, tonic::Status> {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/txn_rpc.TxnService/sync_peer_list");
+            self.inner.unary(request.into_request(), path, codec).await
+        }
     }
 }
 #[doc = r" Generated server implementations."]
@@ -98,6 +122,10 @@ pub mod txn_service_server {
             &self,
             request: tonic::Request<super::PullRequest>,
         ) -> Result<tonic::Response<super::PullResponse>, tonic::Status>;
+        async fn sync_peer_list(
+            &self,
+            request: tonic::Request<super::RegisterRequest>,
+        ) -> Result<tonic::Response<super::Status>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct TxnServiceServer<T: TxnService> {
@@ -159,6 +187,37 @@ pub mod txn_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = get_remote_updatesSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec).apply_compression_config(
+                            accept_compression_encodings,
+                            send_compression_encodings,
+                        );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/txn_rpc.TxnService/sync_peer_list" => {
+                    #[allow(non_camel_case_types)]
+                    struct sync_peer_listSvc<T: TxnService>(pub Arc<T>);
+                    impl<T: TxnService> tonic::server::UnaryService<super::RegisterRequest> for sync_peer_listSvc<T> {
+                        type Response = super::Status;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RegisterRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { (*inner).sync_peer_list(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = sync_peer_listSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec).apply_compression_config(
                             accept_compression_encodings,

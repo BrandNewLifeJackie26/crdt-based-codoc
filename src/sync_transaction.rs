@@ -1,10 +1,11 @@
-use crate::block::Block;
 use crate::doc::Doc;
 use crate::doc::VectorClock;
 use crate::txn_rpc;
 use crate::txn_rpc::txn_service_client::TxnServiceClient;
 use crate::txn_rpc::txn_service_server::TxnService;
+use crate::utils::Peer;
 use crate::utils::{ClientID, Updates};
+use crate::zk_conn::ZooKeeperConnection;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -16,19 +17,30 @@ use tonic::transport::Endpoint;
 // IMPORTANT: SyncTransaction will take in a created Doc and modify its states
 pub struct SyncTransaction {
     // local copy of the doc
-    doc: Arc<Mutex<Doc>>,
-    channels: Arc<Mutex<HashMap<ClientID, Channel>>>,
-
-    // unique identifier for a client
-    client: ClientID,
+    pub doc: Arc<Mutex<Doc>>,
+    pub channels: Arc<Mutex<HashMap<ClientID, Channel>>>,
+    // zookeeper utils
+    pub zk: ZooKeeperConnection,
+    // unique identifier for this client
+    pub client: ClientID,
+    pub client_ip: String,
 }
 
 impl SyncTransaction {
-    pub fn new(client: ClientID, doc: Arc<Mutex<Doc>>) -> Self {
+    pub fn new(
+        client: ClientID,
+        doc: Arc<Mutex<Doc>>,
+        channels: Arc<Mutex<HashMap<ClientID, Channel>>>,
+        client_ip: String,
+    ) -> Self {
         SyncTransaction {
             doc: doc,
-            channels: Arc::new(Mutex::new(HashMap::new())),
+            channels: channels,
             client: client,
+            client_ip: client_ip.clone(),
+            zk: ZooKeeperConnection {
+                client_ip: client_ip,
+            },
         }
     }
 
@@ -45,14 +57,18 @@ impl SyncTransaction {
 
         // for all peers call on rpc to get all updates
         for client in peers.into_iter() {
+            if client.client_id == client.client_id {
+                continue;
+            }
             // if connection already established, reuse the connection
             let conn = real_channel.get(&client.client_id);
             match conn {
-                Some(conn) => {
+                Some(_) => {
                     // just reuse
                 }
                 None => {
-                    let endpoint = Endpoint::from_shared(client.ip_addr);
+                    let http_path = format!("http://{}", client.ip_addr);
+                    let endpoint = Endpoint::from_shared(http_path);
                     if let Ok(ep) = endpoint {
                         let temp = ep.connect().await;
                         if let Ok(ch) = temp {
@@ -80,7 +96,7 @@ impl SyncTransaction {
                                     serde_json::from_str(&value.into_inner().updates);
                                 match remote_updates {
                                     Ok(remote_updates) => {
-                                        self.update_remote(remote_updates);
+                                        self.update_remote(remote_updates).await;
                                     }
                                     Err(_) => println!("serde deserialization error"),
                                 }
@@ -95,7 +111,7 @@ impl SyncTransaction {
     }
 
     // update peers' modifications on local copy
-    // don;t need to deal with conflicts
+    // don't need to deal with conflicts
     pub async fn update_remote(&self, updates: Updates) {
         let mut delete_list: Updates = vec![];
         let mut update_list: Updates = vec![];
@@ -108,8 +124,8 @@ impl SyncTransaction {
         }
 
         let mut local_doc = self.doc.lock().await;
-        local_doc.insert_remote(update_list);
-        local_doc.delete_remote(delete_list);
+        local_doc.insert_remote(update_list).await;
+        local_doc.delete_remote(delete_list).await;
     }
 
     // takes in a vector clock, compare with its own vector clock,
@@ -175,10 +191,19 @@ impl SyncTransaction {
     }
 
     // consult zookeeper and sync with other peers when started
-    pub fn register(client: ClientID) {}
-
-    // the callback function called by zookeeper
-    pub fn register_call_back(client: ClientID) {}
+    pub async fn register(&self) -> bool {
+        let mut local_doc = self.doc.lock().await;
+        let reg_res = self.zk.register(local_doc.name.clone(), self.client).await;
+        if let Ok(reg_res) = reg_res {
+            println!(
+                "{:?} successfully get the peer list: {:?}",
+                self.client, reg_res
+            );
+            local_doc.peers = reg_res;
+            return true;
+        }
+        false
+    }
 }
 
 // implement rpc interface
@@ -189,7 +214,6 @@ impl TxnService for SyncTransaction {
         request: tonic::Request<txn_rpc::PullRequest>,
     ) -> Result<tonic::Response<txn_rpc::PullResponse>, tonic::Status> {
         let temp_request = request.into_inner();
-        let client_id = temp_request.client_id;
         let vector_string = temp_request.vector_clock;
 
         let vector_clock = serde_json::from_str::<VectorClock>(&vector_string);
@@ -207,6 +231,35 @@ impl TxnService for SyncTransaction {
                 }
             }
             Err(_) => return Err(tonic::Status::invalid_argument("deserialized rpc error")),
+        }
+    }
+
+    async fn sync_peer_list(
+        &self,
+        request: tonic::Request<txn_rpc::RegisterRequest>,
+    ) -> Result<tonic::Response<txn_rpc::Status>, tonic::Status> {
+        let temp_request = request.into_inner();
+        let peers_remote_res: Result<Vec<Peer>, serde_json::Error> =
+            serde_json::from_str(&temp_request.peer_list);
+        if let Ok(peers_remote) = peers_remote_res {
+            println!(
+                "{:?} successfully received up-to-dated peer list {:?}",
+                self.client, peers_remote
+            );
+            let mut local_doc = self.doc.lock().await;
+            let peers_local = local_doc.peers.clone();
+            for client in peers_remote {
+                if !peers_local.contains(&client) {
+                    // this is the new user
+                    local_doc.peers.push(Peer {
+                        client_id: client.client_id,
+                        ip_addr: client.ip_addr,
+                    });
+                }
+            }
+            return Ok(tonic::Response::new(txn_rpc::Status { succ: true }));
+        } else {
+            return Err(tonic::Status::invalid_argument("rpc error"));
         }
     }
 }

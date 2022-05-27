@@ -1,4 +1,10 @@
-use crate::block::Block;
+use serde::{Deserialize, Serialize};
+use std::net::ToSocketAddrs;
+use tokio::sync::mpsc::{Receiver, Sender};
+
+use crate::{
+    block::Block, sync_transaction::SyncTransaction, txn_rpc::txn_service_server::TxnServiceServer,
+};
 use std::{error::Error, fmt::Display};
 
 pub type CRDTResult<T> = Result<T, Box<(dyn Error + Send + Sync)>>;
@@ -6,30 +12,56 @@ pub type CRDTResult<T> = Result<T, Box<(dyn Error + Send + Sync)>>;
 /// basic error types that can occur when running the tribbler service.
 #[derive(Debug, Clone)]
 pub enum CRDTError {
-    /// used when an operation is called for a particular user who does not
-    /// exist
-    UserDoesNotExist(String),
+    RegisterUserFailed(),
+    Unknown(String),
+    ZKCreateZnodeFailed(String),
 }
 
 impl Display for CRDTError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let x = match self {
-            CRDTError::UserDoesNotExist(x) => format!("user \"{}\" does not exist", x),
-            x => format!("{:?}", x),
+            CRDTError::RegisterUserFailed() => format!("cannot register user"),
+            CRDTError::Unknown(x) => format!("unknown error: {}", x),
+            CRDTError::ZKCreateZnodeFailed(x) => format!("failed to create path: {}", x),
         };
         write!(f, "{}", x)
     }
 }
+
+impl std::error::Error for CRDTError {}
 
 // general type
 pub type ClientID = u32;
 
 pub type Updates = Vec<Block>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Peer {
     pub client_id: ClientID,
     pub ip_addr: String,
 }
 
 impl Peer {}
+
+// start rpc service
+pub async fn serve_rpc(txn: SyncTransaction, mut receiver: Receiver<()>, sender: Sender<()>) {
+    let ip = txn.client_ip.clone();
+    println!("starting rpc at {:?}", ip);
+    let txn_rpc = TxnServiceServer::new(txn);
+    let server = tonic::transport::Server::builder().add_service(txn_rpc);
+    let resolved_addr_res = ip.to_socket_addrs().unwrap().next();
+    if let Some(resolved_addr) = resolved_addr_res {
+        let res = server
+            .serve_with_shutdown(resolved_addr, async move {
+                let _ = sender.send(()).await;
+                receiver.recv().await;
+                println!("successfully shut down txn rpc service");
+            })
+            .await;
+        if let Err(e) = res {
+            println!("failed to start rpc service {:?}", e);
+        }
+    } else {
+        println!("cannot resolve ip address");
+    }
+}

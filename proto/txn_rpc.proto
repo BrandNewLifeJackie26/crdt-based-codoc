@@ -13,6 +13,15 @@ message pullResponse {
     string updates = 1;
 }
 
+message registerRequest {
+    string peer_list = 2;
+}
+
+message Status {
+    bool succ = 1;
+}
+
 service TxnService {
     rpc get_remote_updates(pullRequest) returns (pullResponse);
+    rpc sync_peer_list(registerRequest) returns (Status);
 }

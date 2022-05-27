@@ -13,6 +13,12 @@ pub struct VectorClock {
 }
 
 impl VectorClock {
+    pub fn new() -> VectorClock {
+        VectorClock {
+            clock_map: HashMap::new(),
+        }
+    }
+
     pub fn from() -> VectorClock {
         todo!()
     }
@@ -33,6 +39,7 @@ impl VectorClock {
 // Doc also stores some pending updates to avoid out-of-order updates
 //
 // IMPORTANT: Doc = block_store + state
+#[derive(Clone)]
 pub struct Doc {
     pub name: String,
     pub client: ClientID,

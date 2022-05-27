@@ -12,12 +12,16 @@ pub use crate::block_store::BlockStore;
 
 #[cfg(test)]
 mod local_tests {
-    use crate::block::{Block, BlockID, Content};
-    use crate::block_store;
+    use crate::block::Content;
     use crate::doc::Doc;
-    use crate::list::*;
-    use crate::list::*;
-    use crate::utils::ClientID;
+    use crate::sync_transaction::SyncTransaction;
+    use crate::utils::{serve_rpc, ClientID};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::{thread, time};
+    use tokio::sync::mpsc::channel;
+    use tokio::sync::mpsc::{Receiver, Sender};
+    use tokio::sync::Mutex;
 
     // Local insert to a single doc,
     // there is no need to use transaction if no sync is needed
@@ -62,5 +66,202 @@ mod local_tests {
         )
         .await;
         assert_eq!(doc.to_string().await, "1423".to_string());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn zk_register_test() {
+        let client_id1 = 1;
+        let client_id2 = 2;
+        let doc_name = "doc";
+
+        let (sender1, mut receiver1): (Sender<()>, Receiver<()>) = channel(1);
+        let (init_sender1, mut init_receiver1): (Sender<()>, Receiver<()>) = channel(1);
+        let (sender2, mut receiver2): (Sender<()>, Receiver<()>) = channel(1);
+        let (init_sender2, mut init_receiver2): (Sender<()>, Receiver<()>) = channel(1);
+
+        let doc1 = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id1)));
+        let doc2 = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id2)));
+        let chan1 = Arc::new(Mutex::new(HashMap::new()));
+        let chan2 = Arc::new(Mutex::new(HashMap::new()));
+
+        let txn11 = SyncTransaction::new(
+            client_id1,
+            doc1.clone(),
+            chan1.clone(),
+            "127.0.0.1:4001".to_string(),
+        );
+        let txn22 = SyncTransaction::new(
+            client_id2,
+            doc2.clone(),
+            chan2.clone(),
+            "127.0.0.1:4002".to_string(),
+        );
+
+        tokio::spawn(async move {
+            let _ = init_receiver1.recv().await;
+            let _ = init_receiver2.recv().await;
+            println!("receive init signal, rpc services successfully started");
+            let txn1 = SyncTransaction::new(client_id1, doc1, chan1, "127.0.0.1:4001".to_string());
+            let txn2 = SyncTransaction::new(client_id2, doc2, chan2, "127.0.0.1:4002".to_string());
+            let succ = txn1.register().await;
+            assert_eq!(true, succ);
+            let succ = txn2.register().await;
+            assert_eq!(true, succ);
+
+            // shutdown rpc service
+            let _ = sender1.send(()).await;
+            let _ = sender2.send(()).await;
+        });
+
+        tokio::spawn(async move {
+            serve_rpc(txn11, receiver1, init_sender1).await;
+        });
+
+        serve_rpc(txn22, receiver2, init_sender2).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn zk_same_user_test() {
+        let client_id1 = 1;
+        let doc_name = "doc";
+
+        let (sender1, mut receiver1): (Sender<()>, Receiver<()>) = channel(1);
+        let (init_sender1, mut init_receiver1): (Sender<()>, Receiver<()>) = channel(1);
+        let (sender2, mut receiver2): (Sender<()>, Receiver<()>) = channel(1);
+        let (init_sender2, mut init_receiver2): (Sender<()>, Receiver<()>) = channel(1);
+
+        let doc1 = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id1)));
+        let chan1 = Arc::new(Mutex::new(HashMap::new()));
+
+        let txn1 = SyncTransaction::new(
+            client_id1,
+            doc1.clone(),
+            chan1.clone(),
+            "127.0.0.1:4001".to_string(),
+        );
+        let txn11 = SyncTransaction::new(
+            client_id1,
+            doc1.clone(),
+            chan1.clone(),
+            "127.0.0.1:4001".to_string(),
+        );
+
+        // for the second access
+        let txn22 = SyncTransaction::new(
+            client_id1,
+            doc1.clone(),
+            chan1.clone(),
+            "127.0.0.1:4001".to_string(),
+        );
+
+        tokio::spawn(async move {
+            let _ = init_receiver1.recv().await;
+            println!("receive init signal, rpc services successfully started");
+            let succ = txn1.register().await;
+            assert_eq!(true, succ);
+
+            // shutdown rpc service
+            let _ = sender1.send(()).await;
+        });
+
+        tokio::spawn(async move {
+            serve_rpc(txn11, receiver1, init_sender1).await;
+        });
+
+        let wait = time::Duration::from_secs(2);
+        thread::sleep(wait);
+
+        // same user reaccess the same file
+        tokio::spawn(async move {
+            let _ = init_receiver2.recv().await;
+            // shutdown rpc service
+            let _ = sender2.send(()).await;
+        });
+
+        serve_rpc(txn22, receiver2, init_sender2).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn zk_new_register_broadcast_test() {
+        let client_id1 = 1;
+        let client_id2 = 2;
+        let client_id3 = 3;
+        let doc_name = "doc";
+
+        let (sender1, mut receiver1): (Sender<()>, Receiver<()>) = channel(1);
+        let (init_sender1, mut init_receiver1): (Sender<()>, Receiver<()>) = channel(1);
+        let (sender2, mut receiver2): (Sender<()>, Receiver<()>) = channel(1);
+        let (init_sender2, mut init_receiver2): (Sender<()>, Receiver<()>) = channel(1);
+        let (sender3, mut receiver3): (Sender<()>, Receiver<()>) = channel(1);
+        let (init_sender3, mut init_receiver3): (Sender<()>, Receiver<()>) = channel(1);
+
+        let doc1 = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id1)));
+        let doc2 = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id2)));
+        let doc3 = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id3)));
+        let chan1 = Arc::new(Mutex::new(HashMap::new()));
+        let chan2 = Arc::new(Mutex::new(HashMap::new()));
+        let chan3 = Arc::new(Mutex::new(HashMap::new()));
+
+        let txn11 = SyncTransaction::new(
+            client_id1,
+            doc1.clone(),
+            chan1.clone(),
+            "127.0.0.1:4001".to_string(),
+        );
+        let txn22 = SyncTransaction::new(
+            client_id2,
+            doc2.clone(),
+            chan2.clone(),
+            "127.0.0.1:4002".to_string(),
+        );
+        let txn33 = SyncTransaction::new(
+            client_id3,
+            doc3.clone(),
+            chan2.clone(),
+            "127.0.0.1:4003".to_string(),
+        );
+
+        tokio::spawn(async move {
+            let _ = init_receiver1.recv().await;
+            println!("receive init signal, rpc services successfully started");
+            let txn1 = SyncTransaction::new(client_id1, doc1, chan1, "127.0.0.1:4001".to_string());
+            let succ = txn1.register().await;
+            assert_eq!(true, succ);
+
+            // shutdown rpc service
+            let _ = sender1.send(()).await;
+        });
+
+        tokio::spawn(async move {
+            let _ = init_receiver2.recv().await;
+            println!("receive init signal, rpc services successfully started");
+            let txn2 = SyncTransaction::new(client_id2, doc2, chan2, "127.0.0.1:4002".to_string());
+            let succ = txn2.register().await;
+            assert_eq!(true, succ);
+
+            // shutdown rpc service
+            let _ = sender2.send(()).await;
+        });
+
+        tokio::spawn(async move {
+            let _ = init_receiver3.recv().await;
+            println!("receive init signal, rpc services successfully started");
+            let txn3 = SyncTransaction::new(client_id3, doc3, chan3, "127.0.0.1:4003".to_string());
+            let succ = txn3.register().await;
+            assert_eq!(true, succ);
+
+            // shutdown rpc service
+            let _ = sender3.send(()).await;
+        });
+
+        tokio::spawn(async move {
+            serve_rpc(txn11, receiver1, init_sender1).await;
+        });
+
+        tokio::spawn(async move {
+            serve_rpc(txn22, receiver2, init_sender2).await;
+        });
+
+        serve_rpc(txn33, receiver3, init_sender3).await;
     }
 }
