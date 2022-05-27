@@ -187,8 +187,9 @@ impl ZooKeeperConnection {
                                         );
 
                                         // insert dummy node
+                                        let dummy_path = format!("/{}/dummy", doc);
                                         let _ = zk.create(
-                                            "/doc/dummy",
+                                            &dummy_path[..],
                                             "".as_bytes().to_vec(),
                                             Acl::open_unsafe().clone(),
                                             CreateMode::Persistent,
