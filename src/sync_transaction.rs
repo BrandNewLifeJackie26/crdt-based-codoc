@@ -238,6 +238,7 @@ impl TxnService for SyncTransaction {
         &self,
         request: tonic::Request<txn_rpc::RegisterRequest>,
     ) -> Result<tonic::Response<txn_rpc::Status>, tonic::Status> {
+        println!("{:?} received new node added notification", self.client);
         let temp_request = request.into_inner();
         let peers_remote_res: Result<Vec<Peer>, serde_json::Error> =
             serde_json::from_str(&temp_request.peer_list);

@@ -17,7 +17,6 @@ struct RegisterWatcher {
 
 impl RegisterWatcher {
     async fn register_new_user(&self, peers: &Vec<Peer>) {
-        // println!("new user added");
         let mut client = TxnServiceClient::new(self.channel.clone());
         let peer_list_serialized = serde_json::to_string(&peers);
         if let Ok(peer_list_serialized) = peer_list_serialized {
@@ -31,7 +30,7 @@ impl RegisterWatcher {
                 // println!("failed to send new user to peer's list");
             }
         } else {
-            println!("watcher failed to setialize peer map");
+            println!("watcher failed to serialize peer list");
         }
     }
 }
@@ -41,7 +40,6 @@ impl Watcher for RegisterWatcher {
         match e.event_type {
             WatchedEventType::NodeChildrenChanged => {
                 // new peer has registered
-                // println!("received new peer added notification!");
                 let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
                 if let Ok(zk) = zk {
                     if let Some(path) = e.path {
@@ -51,8 +49,8 @@ impl Watcher for RegisterWatcher {
                                 channel: self.channel.clone(),
                             },
                         );
+
                         if let Ok(peers) = watch_res {
-                            // println!("successfully reset watch on the doc");
                             // find the new child
                             let mut peers_remote = vec![];
                             for peer in peers {
@@ -76,17 +74,16 @@ impl Watcher for RegisterWatcher {
                                             }
                                         }
                                     }
-                                    Err(_) => println!("register watcher fail to parse client id"),
+                                    Err(_) => println!("dummy node, ignore"),
                                 }
                             }
                             // call into transaction's register function
-                            // println!("send new peer list through rpc");
                             Runtime::new()
                                 .unwrap()
                                 .block_on(self.register_new_user(&peers_remote));
                         }
                     } else {
-                        println!("register watcher cannot initialize zookeeper");
+                        println!("register watcher cannot initialize");
                     }
                 }
             }
@@ -120,6 +117,8 @@ pub struct ZooKeeperConnection {
 }
 
 impl ZooKeeperConnection {
+    pub async fn background_sync() {}
+
     // given the name of a doc, fetch all the users that have the copy of the doc
     pub async fn register(&self, doc: String, client: ClientID) -> CRDTResult<Vec<Peer>> {
         let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
@@ -186,15 +185,6 @@ impl ZooKeeperConnection {
                                             RegisterWatcher { channel: ch },
                                         );
 
-                                        // insert dummy node
-                                        let dummy_path = format!("/{}/dummy", doc);
-                                        let _ = zk.create(
-                                            &dummy_path[..],
-                                            "".as_bytes().to_vec(),
-                                            Acl::open_unsafe().clone(),
-                                            CreateMode::Persistent,
-                                        );
-
                                         if let Ok(full_peer_list) = watch_res {
                                             // println!("successfully set watch on the doc");
                                             for peer in full_peer_list {
@@ -215,9 +205,7 @@ impl ZooKeeperConnection {
                                                             });
                                                         }
                                                     }
-                                                    Err(_) => {
-                                                        println!("register watcher fail to parse client id")
-                                                    }
+                                                    Err(_) => println!("dummy node, ignore"),
                                                 }
                                             }
                                             // return Ok(peers_remote);
