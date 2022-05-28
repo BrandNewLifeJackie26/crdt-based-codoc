@@ -128,17 +128,17 @@ mod zk_test {
         let (sender2, receiver2): (Sender<()>, Receiver<()>) = channel(1);
         let (init_sender2, mut init_receiver2): (Sender<()>, Receiver<()>) = channel(1);
 
-        let (txn_rpc1, txn_service1) =
+        let (txn_rpc1, txn_service1, txn_bg1) =
             init_txn_w_rpc("doc".to_string(), 1, "127.0.0.1:4001".to_string()).await;
-        let (txn_rpc2, txn_service2) =
+        let (txn_rpc2, txn_service2, txn_bg2) =
             init_txn_w_rpc("doc".to_string(), 2, "127.0.0.1:4002".to_string()).await;
 
         // start rpc services
         tokio::spawn(async move {
-            serve_rpc(txn_rpc1, receiver1, init_sender1).await;
+            serve_rpc(txn_rpc1, txn_bg1, receiver1, init_sender1).await;
         });
         tokio::spawn(async move {
-            serve_rpc(txn_rpc2, receiver2, init_sender2).await;
+            serve_rpc(txn_rpc2, txn_bg2, receiver2, init_sender2).await;
         });
 
         // start user operation
@@ -149,6 +149,9 @@ mod zk_test {
             let succ = txn_service1.register().await;
             assert_eq!(true, succ);
         });
+
+        let wait = time::Duration::from_secs(2);
+        thread::sleep(wait);
         tokio::spawn(async move {
             let succ = txn_service2.register().await;
             assert_eq!(true, succ);
@@ -176,22 +179,22 @@ mod zk_test {
         let (sender3, receiver3): (Sender<()>, Receiver<()>) = channel(1);
         let (init_sender3, mut init_receiver3): (Sender<()>, Receiver<()>) = channel(1);
 
-        let (txn_rpc1, txn_service1) =
+        let (txn_rpc1, txn_service1, txn_bg1) =
             init_txn_w_rpc("doc".to_string(), 1, "127.0.0.1:4001".to_string()).await;
-        let (txn_rpc2, txn_service2) =
+        let (txn_rpc2, txn_service2, txn_bg2) =
             init_txn_w_rpc("doc".to_string(), 2, "127.0.0.1:4002".to_string()).await;
-        let (txn_rpc3, txn_service3) =
+        let (txn_rpc3, txn_service3, txn_bg3) =
             init_txn_w_rpc("doc".to_string(), 3, "127.0.0.1:4003".to_string()).await;
 
         // start rpc services
         tokio::spawn(async move {
-            serve_rpc(txn_rpc1, receiver1, init_sender1).await;
+            serve_rpc(txn_rpc1, txn_bg1, receiver1, init_sender1).await;
         });
         tokio::spawn(async move {
-            serve_rpc(txn_rpc2, receiver2, init_sender2).await;
+            serve_rpc(txn_rpc2, txn_bg2, receiver2, init_sender2).await;
         });
         tokio::spawn(async move {
-            serve_rpc(txn_rpc3, receiver3, init_sender3).await;
+            serve_rpc(txn_rpc3, txn_bg3, receiver3, init_sender3).await;
         });
 
         let _ = init_receiver1.recv().await;
@@ -236,7 +239,7 @@ mod zk_test {
         doc_name: String,
         client_id: ClientID,
         client_ip: String,
-    ) -> (SyncTransaction, SyncTransaction) {
+    ) -> (SyncTransaction, SyncTransaction, SyncTransaction) {
         let doc = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id)));
         let chan = Arc::new(Mutex::new(HashMap::new()));
         let txn_rpc = SyncTransaction::new(
@@ -253,6 +256,13 @@ mod zk_test {
             chan.clone(),
             client_ip.clone(),
         );
-        return (txn_rpc, txn_service);
+        let txn_background = SyncTransaction::new(
+            doc_name.clone(),
+            client_id.clone(),
+            doc.clone(),
+            chan.clone(),
+            client_ip.clone(),
+        );
+        return (txn_rpc, txn_service, txn_background);
     }
 }

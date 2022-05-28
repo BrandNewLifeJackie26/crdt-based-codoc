@@ -5,7 +5,8 @@ use crate::{
     utils::{CRDTError, CRDTResult, ClientID, Peer},
 };
 use std::time::Duration;
-use tokio::runtime::Runtime;
+use std::{thread, time};
+use tokio::{runtime::Runtime, sync::mpsc::Sender};
 use tonic::transport::{Channel, Endpoint};
 use zookeeper::{Acl, CreateMode, KeeperState, WatchedEvent, WatchedEventType, Watcher, ZooKeeper};
 
@@ -37,6 +38,7 @@ impl RegisterWatcher {
 
 impl Watcher for RegisterWatcher {
     fn handle(&self, e: WatchedEvent) {
+        println!("hhhh");
         match e.event_type {
             WatchedEventType::NodeChildrenChanged => {
                 let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
@@ -47,6 +49,13 @@ impl Watcher for RegisterWatcher {
                             RegisterWatcher {
                                 channel: self.channel.clone(),
                             },
+                        );
+                        // insert dummy node
+                        let _ = zk.create(
+                            "/doc/dummy",
+                            "".as_bytes().to_vec(),
+                            Acl::open_unsafe().clone(),
+                            CreateMode::Persistent,
                         );
 
                         if let Ok(peers) = watch_res {
@@ -116,10 +125,43 @@ pub struct ZooKeeperConnection {
 }
 
 impl ZooKeeperConnection {
-    pub async fn background_sync(&self, doc: String) {
+    pub async fn background_sync(&self, doc: String, sender: Sender<()>) {
+        println!("backend process started!");
         let path = format!("/{}", doc);
         let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
+        let watch_res;
+
         if let Ok(zk) = zk {
+            // check if doc path exist
+            let exists = zk.exists(&path[..], false);
+            match exists {
+                Ok(exists) => {
+                    if let None = exists {
+                        // this file does not exist, create one
+                        println!("creating the doc directory");
+                        let create_res = zk.create(
+                            &path[..],
+                            "".as_bytes().to_vec(),
+                            Acl::open_unsafe().clone(),
+                            CreateMode::Persistent,
+                        );
+                        match create_res {
+                            Ok(_) => {
+                                // println!("successfully create doc directory");
+                            }
+                            Err(e) => {
+                                println!("{:?}", e);
+                                // return Err(Box::new(CRDTError::ZKCreateZnodeFailed(path)));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("{:?}", e);
+                    // return Err(Box::new(CRDTError::ZKCreateZnodeFailed(path)));
+                }
+            }
+
             let http_path = format!("http://{}", self.client_ip.clone());
             let endpoint = Endpoint::from_shared(http_path);
             match endpoint {
@@ -127,7 +169,18 @@ impl ZooKeeperConnection {
                     let temp = ep.connect().await;
                     match temp {
                         Ok(ch) => {
-                            let _ = zk.get_children_w(&path[..], RegisterWatcher { channel: ch });
+                            watch_res =
+                                zk.get_children_w(&path[..], RegisterWatcher { channel: ch });
+                            if let Err(watch_res) = watch_res {
+                                println!("????? {:?}", watch_res);
+                            }
+                            // insert dummy node
+                            let _ = zk.create(
+                                "/doc/dummy",
+                                "".as_bytes().to_vec(),
+                                Acl::open_unsafe().clone(),
+                                CreateMode::Persistent,
+                            );
                         }
                         Err(e) => println!("zookeepeer failed to connect to local node: {:?}", e),
                     }
@@ -137,6 +190,11 @@ impl ZooKeeperConnection {
         } else {
             println!("failed to start zookeeper");
         }
+        let _ = sender.send(()).await;
+        // delay the op, see if it got propagated
+        let wait = time::Duration::from_secs(5);
+        thread::sleep(wait);
+        println!("background shutting down");
     }
 
     // given the name of a doc, fetch all the users that have the copy of the doc
@@ -149,74 +207,45 @@ impl ZooKeeperConnection {
                 let path = format!("/{}", doc);
                 let mut peers_remote = vec![];
 
-                // check if doc path exist
-                let exists = zk.exists(&path[..], false);
-                match exists {
-                    Ok(exists) => {
-                        if let None = exists {
-                            // this file does not exist, create one
-                            println!("creating the doc directory");
-                            let create_res = zk.create(
-                                &path[..],
-                                "".as_bytes().to_vec(),
-                                Acl::open_unsafe().clone(),
-                                CreateMode::Persistent,
-                            );
-                            match create_res {
-                                Ok(_) => {
-                                    // println!("successfully create doc directory");
-                                }
-                                Err(e) => {
-                                    println!("{:?}", e);
-                                    // return Err(Box::new(CRDTError::ZKCreateZnodeFailed(path)));
-                                }
-                            }
-                        }
+                // create the child node
+                let child_path = format!("/{}/{}", doc, client);
+                println!("the child path is {:?}", child_path);
+                let res = zk.create(
+                    &child_path[..],
+                    self.client_ip.as_bytes().to_vec(),
+                    Acl::open_unsafe().clone(),
+                    CreateMode::Persistent,
+                );
+                match res {
+                    Ok(_) => {
+                        println!("successfully created node for this client");
+                    }
+                    Err(e) => {
+                        println!("cannot create node for this client because {:?}", e);
+                        return Err(Box::new(CRDTError::ZKCreateZnodeFailed(child_path)));
+                    }
+                }
 
-                        // create the child node
-                        let child_path = format!("/{}/{}", doc, client);
-                        println!("the child path is {:?}", child_path);
-                        let res = zk.create(
-                            &child_path[..],
-                            self.client_ip.as_bytes().to_vec(),
-                            Acl::open_unsafe().clone(),
-                            CreateMode::Persistent,
-                        );
-                        match res {
-                            Ok(_) => {
-                                println!("successfully created node for this client");
-                            }
-                            Err(e) => {
-                                println!("cannot create node for this client because {:?}", e);
-                                return Err(Box::new(CRDTError::ZKCreateZnodeFailed(child_path)));
-                            }
-                        }
+                let watch_res = zk.get_children(&path[..], false);
 
-                        let watch_res = zk.get_children(&path[..], false);
-                        if let Ok(full_peer_list) = watch_res {
-                            for peer in full_peer_list {
-                                let peer_id = peer.parse::<u32>();
-                                match peer_id {
-                                    Ok(peer_id) => {
-                                        let child_path = format!("{}/{}", path, peer);
-                                        let ip_addr_res = zk.get_data(&child_path[..], false);
-                                        if let Ok(ip_addr) = ip_addr_res {
-                                            peers_remote.push(Peer {
-                                                client_id: peer_id,
-                                                ip_addr: String::from_utf8(ip_addr.0.clone())
-                                                    .unwrap(),
-                                            });
-                                        }
-                                    }
-                                    Err(_) => println!("invalid client id"),
+                if let Ok(full_peer_list) = watch_res {
+                    for peer in full_peer_list {
+                        let peer_id = peer.parse::<u32>();
+                        match peer_id {
+                            Ok(peer_id) => {
+                                let child_path = format!("{}/{}", path, peer);
+                                let ip_addr_res = zk.get_data(&child_path[..], false);
+                                if let Ok(ip_addr) = ip_addr_res {
+                                    peers_remote.push(Peer {
+                                        client_id: peer_id,
+                                        ip_addr: String::from_utf8(ip_addr.0.clone()).unwrap(),
+                                    });
                                 }
                             }
-                            return Ok(peers_remote);
-                        } else {
-                            println!("zookeepeer failed to watch the doc path");
+                            Err(_) => println!("invalid client id"),
                         }
                     }
-                    Err(_) => println!("zookeeper failed to call exist"),
+                    return Ok(peers_remote);
                 }
             }
             Err(_) => println!("failed to connect to zk"),

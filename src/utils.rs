@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::net::ToSocketAddrs;
-use std::{thread, time};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::{
@@ -45,17 +44,21 @@ pub struct Peer {
 impl Peer {}
 
 // start rpc service
-pub async fn serve_rpc(txn: SyncTransaction, mut receiver: Receiver<()>, sender: Sender<()>) {
+pub async fn serve_rpc(
+    txn: SyncTransaction,
+    txn_bg: SyncTransaction,
+    mut receiver: Receiver<()>,
+    sender: Sender<()>,
+) {
     let ip = txn.client_ip.clone();
     println!("starting rpc at {:?}", ip);
     let doc_name = txn.doc_name.clone();
-    // let (sender_r, mut receiver_r): (Sender<()>, Receiver<()>) = channel(1);
+    let (sender_r, mut receiver_r): (Sender<()>, Receiver<()>) = channel(1);
 
-    // tokio::spawn(async move {
-    //     println!("background syncing process start");
-    //     let _ = receiver_r.recv().await;
-    //     txn.zk.background_sync(doc_name).await;
-    // });
+    tokio::spawn(async move {
+        let _ = receiver_r.recv().await;
+        txn_bg.zk.background_sync(doc_name, sender).await;
+    });
 
     let txn_rpc = TxnServiceServer::new(txn);
     let server = tonic::transport::Server::builder().add_service(txn_rpc);
@@ -64,8 +67,7 @@ pub async fn serve_rpc(txn: SyncTransaction, mut receiver: Receiver<()>, sender:
     if let Some(resolved_addr) = resolved_addr_res {
         let res = server
             .serve_with_shutdown(resolved_addr, async move {
-                let _ = sender.send(()).await;
-                // let _ = sender_r.send(()).await;
+                let _ = sender_r.send(()).await;
                 receiver.recv().await;
                 println!("successfully shut down txn rpc service");
             })
