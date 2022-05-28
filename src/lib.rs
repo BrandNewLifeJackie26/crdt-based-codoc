@@ -240,12 +240,14 @@ mod zk_test {
         let doc = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id)));
         let chan = Arc::new(Mutex::new(HashMap::new()));
         let txn_rpc = SyncTransaction::new(
+            doc_name.clone(),
             client_id.clone(),
             doc.clone(),
             chan.clone(),
             client_ip.clone(),
         );
         let txn_service = SyncTransaction::new(
+            doc_name.clone(),
             client_id.clone(),
             doc.clone(),
             chan.clone(),

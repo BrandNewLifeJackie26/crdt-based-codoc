@@ -39,7 +39,6 @@ impl Watcher for RegisterWatcher {
     fn handle(&self, e: WatchedEvent) {
         match e.event_type {
             WatchedEventType::NodeChildrenChanged => {
-                // new peer has registered
                 let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
                 if let Ok(zk) = zk {
                     if let Some(path) = e.path {
@@ -117,7 +116,28 @@ pub struct ZooKeeperConnection {
 }
 
 impl ZooKeeperConnection {
-    pub async fn background_sync() {}
+    pub async fn background_sync(&self, doc: String) {
+        let path = format!("/{}", doc);
+        let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
+        if let Ok(zk) = zk {
+            let http_path = format!("http://{}", self.client_ip.clone());
+            let endpoint = Endpoint::from_shared(http_path);
+            match endpoint {
+                Ok(ep) => {
+                    let temp = ep.connect().await;
+                    match temp {
+                        Ok(ch) => {
+                            let _ = zk.get_children_w(&path[..], RegisterWatcher { channel: ch });
+                        }
+                        Err(e) => println!("zookeepeer failed to connect to local node: {:?}", e),
+                    }
+                }
+                Err(_) => println!("zookeepeer failed to connect to endpoint"),
+            }
+        } else {
+            println!("failed to start zookeeper");
+        }
+    }
 
     // given the name of a doc, fetch all the users that have the copy of the doc
     pub async fn register(&self, doc: String, client: ClientID) -> CRDTResult<Vec<Peer>> {
@@ -127,7 +147,6 @@ impl ZooKeeperConnection {
             Ok(zk) => {
                 println!("connected to {:?}", ZK_ADDR);
                 let path = format!("/{}", doc);
-                // println!("root doc path is {:?}", path);
                 let mut peers_remote = vec![];
 
                 // check if doc path exist
@@ -173,61 +192,32 @@ impl ZooKeeperConnection {
                             }
                         }
 
-                        let http_path = format!("http://{}", self.client_ip.clone());
-                        let endpoint = Endpoint::from_shared(http_path);
-                        match endpoint {
-                            Ok(ep) => {
-                                let temp = ep.connect().await;
-                                match temp {
-                                    Ok(ch) => {
-                                        let watch_res = zk.get_children_w(
-                                            &path[..],
-                                            RegisterWatcher { channel: ch },
-                                        );
-
-                                        if let Ok(full_peer_list) = watch_res {
-                                            // println!("successfully set watch on the doc");
-                                            for peer in full_peer_list {
-                                                let peer_id = peer.parse::<u32>();
-                                                match peer_id {
-                                                    Ok(peer_id) => {
-                                                        let child_path =
-                                                            format!("{}/{}", path, peer);
-                                                        let ip_addr_res =
-                                                            zk.get_data(&child_path[..], false);
-                                                        if let Ok(ip_addr) = ip_addr_res {
-                                                            peers_remote.push(Peer {
-                                                                client_id: peer_id,
-                                                                ip_addr: String::from_utf8(
-                                                                    ip_addr.0.clone(),
-                                                                )
-                                                                .unwrap(),
-                                                            });
-                                                        }
-                                                    }
-                                                    Err(_) => println!("dummy node, ignore"),
-                                                }
-                                            }
-                                            // return Ok(peers_remote);
-                                        } else {
-                                            println!("zookeepeer failed to watch the doc path");
+                        let watch_res = zk.get_children(&path[..], false);
+                        if let Ok(full_peer_list) = watch_res {
+                            for peer in full_peer_list {
+                                let peer_id = peer.parse::<u32>();
+                                match peer_id {
+                                    Ok(peer_id) => {
+                                        let child_path = format!("{}/{}", path, peer);
+                                        let ip_addr_res = zk.get_data(&child_path[..], false);
+                                        if let Ok(ip_addr) = ip_addr_res {
+                                            peers_remote.push(Peer {
+                                                client_id: peer_id,
+                                                ip_addr: String::from_utf8(ip_addr.0.clone())
+                                                    .unwrap(),
+                                            });
                                         }
                                     }
-                                    Err(e) => println!(
-                                        "zookeepeer failed to connect to local node: {:?}",
-                                        e
-                                    ),
+                                    Err(_) => println!("invalid client id"),
                                 }
                             }
-                            Err(e) => {
-                                println!("zookeepeer failed to connect to local node: {:?}", e)
-                            }
+                            return Ok(peers_remote);
+                        } else {
+                            println!("zookeepeer failed to watch the doc path");
                         }
-                        return Ok(peers_remote);
                     }
                     Err(_) => println!("zookeeper failed to call exist"),
                 }
-                // TODO: when to close zookeeper connection
             }
             Err(_) => println!("failed to connect to zk"),
         }

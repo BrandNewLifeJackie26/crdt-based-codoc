@@ -17,6 +17,7 @@ use tonic::transport::Endpoint;
 // IMPORTANT: SyncTransaction will take in a created Doc and modify its states
 pub struct SyncTransaction {
     // local copy of the doc
+    pub doc_name: String,
     pub doc: Arc<Mutex<Doc>>,
     pub channels: Arc<Mutex<HashMap<ClientID, Channel>>>,
     // zookeeper utils
@@ -28,12 +29,14 @@ pub struct SyncTransaction {
 
 impl SyncTransaction {
     pub fn new(
+        doc_name: String,
         client: ClientID,
         doc: Arc<Mutex<Doc>>,
         channels: Arc<Mutex<HashMap<ClientID, Channel>>>,
         client_ip: String,
     ) -> Self {
         SyncTransaction {
+            doc_name: doc_name,
             doc: doc,
             channels: channels,
             client: client,
