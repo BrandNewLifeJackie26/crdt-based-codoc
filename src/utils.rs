@@ -51,7 +51,6 @@ pub async fn serve_rpc(
     sender: Sender<()>,
 ) {
     let ip = txn.client_ip.clone();
-    println!("starting rpc at {:?}", ip);
     let doc_name = txn.doc_name.clone();
     let (sender_r, mut receiver_r): (Sender<()>, Receiver<()>) = channel(1);
 
@@ -67,6 +66,7 @@ pub async fn serve_rpc(
     if let Some(resolved_addr) = resolved_addr_res {
         let res = server
             .serve_with_shutdown(resolved_addr, async move {
+                println!("started rpc at {:?}", resolved_addr);
                 let _ = sender_r.send(()).await;
                 receiver.recv().await;
                 println!("successfully shut down txn rpc service");
@@ -78,4 +78,5 @@ pub async fn serve_rpc(
     } else {
         println!("cannot resolve ip address");
     }
+    // handle.await.expect("this task being joined has panicked")
 }

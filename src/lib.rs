@@ -137,6 +137,8 @@ mod zk_test {
         tokio::spawn(async move {
             serve_rpc(txn_rpc1, txn_bg1, receiver1, init_sender1).await;
         });
+        let wait = time::Duration::from_secs(2);
+        thread::sleep(wait);
         tokio::spawn(async move {
             serve_rpc(txn_rpc2, txn_bg2, receiver2, init_sender2).await;
         });
@@ -144,14 +146,12 @@ mod zk_test {
         // start user operation
         let _ = init_receiver1.recv().await;
         let _ = init_receiver2.recv().await;
-        println!("receive init signal, rpc services successfully started");
+
+        println!("----------- start op --------------");
         tokio::spawn(async move {
             let succ = txn_service1.register().await;
             assert_eq!(true, succ);
         });
-
-        let wait = time::Duration::from_secs(2);
-        thread::sleep(wait);
         tokio::spawn(async move {
             let succ = txn_service2.register().await;
             assert_eq!(true, succ);
@@ -171,13 +171,15 @@ mod zk_test {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn zk_new_register_broadcast_test() {
+    async fn zk_register_test_more_nodes() {
         let (sender1, receiver1): (Sender<()>, Receiver<()>) = channel(1);
         let (init_sender1, mut init_receiver1): (Sender<()>, Receiver<()>) = channel(1);
         let (sender2, receiver2): (Sender<()>, Receiver<()>) = channel(1);
         let (init_sender2, mut init_receiver2): (Sender<()>, Receiver<()>) = channel(1);
         let (sender3, receiver3): (Sender<()>, Receiver<()>) = channel(1);
         let (init_sender3, mut init_receiver3): (Sender<()>, Receiver<()>) = channel(1);
+        let (sender4, receiver4): (Sender<()>, Receiver<()>) = channel(1);
+        let (init_sender4, mut init_receiver4): (Sender<()>, Receiver<()>) = channel(1);
 
         let (txn_rpc1, txn_service1, txn_bg1) =
             init_txn_w_rpc("doc".to_string(), 1, "127.0.0.1:4001".to_string()).await;
@@ -185,23 +187,19 @@ mod zk_test {
             init_txn_w_rpc("doc".to_string(), 2, "127.0.0.1:4002".to_string()).await;
         let (txn_rpc3, txn_service3, txn_bg3) =
             init_txn_w_rpc("doc".to_string(), 3, "127.0.0.1:4003".to_string()).await;
+        let (txn_rpc4, txn_service4, txn_bg4) =
+            init_txn_w_rpc("doc".to_string(), 4, "127.0.0.1:4004".to_string()).await;
 
-        // start rpc services
+        // start 1 and 2
         tokio::spawn(async move {
             serve_rpc(txn_rpc1, txn_bg1, receiver1, init_sender1).await;
         });
         tokio::spawn(async move {
             serve_rpc(txn_rpc2, txn_bg2, receiver2, init_sender2).await;
         });
-        tokio::spawn(async move {
-            serve_rpc(txn_rpc3, txn_bg3, receiver3, init_sender3).await;
-        });
 
         let _ = init_receiver1.recv().await;
         let _ = init_receiver2.recv().await;
-        let _ = init_receiver3.recv().await;
-        println!("receive init signal, rpc services successfully started");
-
         tokio::spawn(async move {
             let succ = txn_service1.register().await;
             assert_eq!(true, succ);
@@ -211,12 +209,27 @@ mod zk_test {
             assert_eq!(true, succ);
         });
 
+        // start 3 and 4
+        tokio::spawn(async move {
+            serve_rpc(txn_rpc3, txn_bg3, receiver3, init_sender3).await;
+        });
+        tokio::spawn(async move {
+            serve_rpc(txn_rpc4, txn_bg4, receiver4, init_sender4).await;
+        });
+
+        let _ = init_receiver3.recv().await;
+        let _ = init_receiver4.recv().await;
+
         // delay the op, see if it got propagated
         let wait = time::Duration::from_secs(2);
         thread::sleep(wait);
 
         tokio::spawn(async move {
             let succ = txn_service3.register().await;
+            assert_eq!(true, succ);
+        });
+        tokio::spawn(async move {
+            let succ = txn_service4.register().await;
             assert_eq!(true, succ);
         });
 
@@ -228,6 +241,7 @@ mod zk_test {
         let _ = sender1.send(()).await;
         let _ = sender2.send(()).await;
         let _ = sender3.send(()).await;
+        let _ = sender4.send(()).await;
 
         // wait for rpc to shutdown
         let wait = time::Duration::from_secs(2);
