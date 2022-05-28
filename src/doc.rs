@@ -228,15 +228,15 @@ impl Doc {
         let mut store_lock = store.lock().await;
 
         // Find the correct block to insert
-        let mut i = 0 as usize;
-        let mut curr = 0;
+        let mut idx = 0 as usize;
+        let mut prev_char_cnt = 0;
 
-        while curr < pos && i < (*store_lock).total_store.list.len() {
+        while prev_char_cnt < pos && idx < (*store_lock).total_store.list.len() {
             // TODO: what if pos < curr and the loop already break?
-            if !(*store_lock).total_store.list[i].is_deleted {
-                curr += (*store_lock).total_store.list[i].content.content.len() as u32;
+            if !(*store_lock).total_store.list[idx].is_deleted {
+                prev_char_cnt += (*store_lock).total_store.list[idx].content.content.len() as u32;
             }
-            i += 1;
+            idx += 1;
         }
 
         let new_block_clk;
@@ -265,37 +265,50 @@ impl Doc {
         };
 
         // TODO:
-        if i == (*store_lock).total_store.list.len()
-            && curr == (*store_lock).to_string().len() as u32
+        if idx == (*store_lock).total_store.list.len()
+            && pos >= (*store_lock).to_string().len() as u32
         {
             // Append to the end
-            if i > 0 {
-                let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
+            if idx > 0 {
+                let left_id = Some((*store_lock).total_store.list[idx - 1].id.clone());
                 new_block.left_origin = left_id.clone();
                 (*store_lock).insert(new_block, left_id);
             } else {
                 (*store_lock).insert(new_block, None);
             }
-        } else if curr == pos {
+        } else if prev_char_cnt == pos {
             // Insert to i-th position in total_store
-            let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
+            let left_id = Some((*store_lock).total_store.list[idx - 1].id.clone());
             new_block.left_origin = left_id.clone();
-            new_block.right_origin = Some((*store_lock).total_store.list[i].id.clone());
+            new_block.right_origin = Some((*store_lock).total_store.list[idx].id.clone());
             (*store_lock).insert(new_block, left_id);
         } else {
             // Have to split total_store[i-1]
-            let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
-            let left_content_len =
-                (*store_lock).total_store.list[i - 1].content.content.len() as u32;
+            let left_id = Some((*store_lock).total_store.list[idx - 1].id.clone());
+            let left_content_len = (*store_lock).total_store.list[idx - 1]
+                .content
+                .content
+                .len() as u32;
             new_block.left_origin = left_id.clone();
             new_block.right_origin = Some(BlockID::new(
                 left_id.clone().unwrap().client,
-                left_id.clone().unwrap().clock + left_content_len - (curr - pos),
+                left_id.clone().unwrap().clock + left_content_len - (prev_char_cnt - pos),
             ));
 
             // Split the block
-            (*store_lock).split(left_id.clone().unwrap(), left_content_len - (curr - pos));
+            (*store_lock).split(
+                left_id.clone().unwrap(),
+                left_content_len - (prev_char_cnt - pos),
+            );
+            // println!(
+            //     "----- AFTER SPLIT {:?} -----",
+            //     (*store_lock).total_store.list
+            // );
             (*store_lock).insert(new_block, left_id);
+            // println!(
+            //     "----- AFTER INSERT {:?} -----",
+            //     (*store_lock).total_store.list
+            // );
         }
 
         // Update vector clock
@@ -353,6 +366,7 @@ impl Doc {
                 break;
             }
         }
+        // println!("-------Current start is : {:?}", i_start);
 
         let mut i_end = i_start;
         let mut curr_end = curr_start;
@@ -367,6 +381,7 @@ impl Doc {
                 curr_end += (*store_lock).total_store.list[i_end].content.content.len() as i32;
             }
         }
+        // println!("-------Current end is : {:?}", i_end);
 
         // Delete all blocks in (i_start, i_end) directly
         // Delete i_start and i_end according to the position
@@ -379,7 +394,8 @@ impl Doc {
                 .len() as u32;
             // split into three Blocks
             // the middle one will be deleted
-            let left_length = length - (curr_start as u32 - pos) + 1; // TODO: ?
+            let left_length = length - curr_start as u32 + pos - 1; // TODO: ?
+                                                                    // println!("------- Left length: {:?}", left_length);
             let mut new_blockID;
             if left_length != 0 {
                 (*store_lock).split(block_id.clone(), left_length);
@@ -390,13 +406,33 @@ impl Doc {
             } else {
                 new_blockID = block_id.clone();
             }
+            // println!("----- Block id: {:?}", block_id);
+            // println!("----- NEW Block id: {:?}", new_blockID);
 
             if pos_end as i32 == curr_start {
                 (*store_lock).delete(new_blockID);
             } else {
-                let mid_length = pos_end - pos + 1;
-                (*store_lock).split(new_blockID.clone(), mid_length);
-                (*store_lock).delete(new_blockID);
+                let mid_length = len;
+                store_lock.split(new_blockID.clone(), mid_length);
+                // println!("------ list {:?}", (*store_lock).total_store.list);
+                // println!(
+                //     "------ map {:?}",
+                //     (*store_lock).kv_store.get(&1).unwrap().list
+                // );
+                // println!(
+                //     "------ block map {:?}",
+                //     (*store_lock).block_map.get(&new_blockID.clone())
+                // );
+                (*store_lock).delete(new_blockID.clone());
+                // println!("------ list {:?}", (*store_lock).total_store.list);
+                // println!(
+                //     "------ map {:?}",
+                //     (*store_lock).kv_store.get(&1).unwrap().list
+                // );
+                // println!(
+                //     "------ block map {:?}",
+                //     (*store_lock).block_map.get(&new_blockID.clone())
+                // );
             }
         } else {
             // Delete all blocks in between

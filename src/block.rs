@@ -70,6 +70,6 @@ impl Block {
 
     // Delete the current block (mark as deleted)
     pub fn delete(&mut self) {
-        self.is_deleted = false;
+        self.is_deleted = true;
     }
 }
