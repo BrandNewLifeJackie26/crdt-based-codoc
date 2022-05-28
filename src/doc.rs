@@ -205,7 +205,7 @@ impl Doc {
                 .len() as u32;
             // split into three Blocks
             // the middle one will be deleted
-            let left_length = length - (curr_start as u32 - pos) + 1;
+            let left_length = length - (curr_start as u32 - pos) + 1; // TODO: ?
             let mut new_blockID;
             if left_length != 0 {
                 (*store_lock).split(block_id.clone(), left_length);
