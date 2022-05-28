@@ -10,7 +10,7 @@ use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
 };
 use tonic::transport::{Channel, Endpoint};
-use zookeeper::{Acl, CreateMode, KeeperState, WatchedEvent, WatchedEventType, Watcher, ZooKeeper};
+use zookeeper::{Acl, CreateMode, WatchedEvent, WatchedEventType, Watcher, ZooKeeper};
 
 const ZK_ADDR: &'static str = "127.0.0.1:2181";
 
@@ -21,6 +21,7 @@ struct RegisterWatcher {
 }
 
 impl RegisterWatcher {
+    // rpc client
     async fn register_new_user(&self, peers: &Vec<Peer>) {
         let mut client = TxnServiceClient::new(self.channel.clone());
         let peer_list_serialized = serde_json::to_string(&peers);
@@ -93,8 +94,8 @@ pub struct ZooKeeperConnection {
 }
 
 impl ZooKeeperConnection {
-    pub async fn background_sync(&self, doc: String, sender: Sender<()>) {
-        println!("backend process started!");
+    pub async fn background_sync(&self, doc: String, sender: Sender<()>) -> CRDTResult<()> {
+        println!("background sync process started!");
         let path = format!("/{}", doc);
         let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
         let (sender_block, mut receiver_block): (Sender<()>, Receiver<()>) = channel(1);
@@ -120,7 +121,7 @@ impl ZooKeeperConnection {
                 }
                 Err(e) => {
                     println!("{:?}", e);
-                    // return Err(Box::new(CRDTError::ZKCreateZnodeFailed(path)));
+                    return Err(Box::new(CRDTError::BackgroundSyncFailed(path)));
                 }
             }
 
@@ -144,31 +145,35 @@ impl ZooKeeperConnection {
                                     },
                                 );
                             }
-                            Err(e) => {
-                                println!("zookeepeer failed to connect to local node: {:?}", e)
+                            Err(_) => {
+                                return Err(Box::new(CRDTError::BackgroundSyncFailed(
+                                    "zookeepeer failed to connect to local node".to_string(),
+                                )));
                             }
                         }
                     }
-                    Err(_) => println!("zookeepeer failed to connect to endpoint"),
+                    Err(_) => {
+                        return Err(Box::new(CRDTError::BackgroundSyncFailed(
+                            "zookeepeer failed to connect to endpoint".to_string(),
+                        )));
+                    }
                 }
                 let _ = receiver_block.recv().await;
             }
         } else {
-            println!("failed to start zookeeper");
+            return Err(Box::new(CRDTError::BackgroundSyncFailed(
+                "failed to start zookeeper".to_string(),
+            )));
         }
-        println!("background shutting down");
     }
 
-    // given the name of a doc, fetch all the users that have the copy of the doc
-    pub async fn register(&self, doc: String, client: ClientID) -> CRDTResult<Vec<Peer>> {
+    // add a user for a doc
+    pub async fn register(&self, doc: String, client: ClientID) -> CRDTResult<()> {
         let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
 
         match zk {
             Ok(zk) => {
                 println!("connected to {:?}", ZK_ADDR);
-                let path = format!("/{}", doc);
-                let mut peers_remote = vec![];
-
                 // create the child node
                 let child_path = format!("/{}/{}", doc, client);
                 println!("the child path is {:?}", child_path);
@@ -182,33 +187,12 @@ impl ZooKeeperConnection {
                 match res {
                     Ok(_) => {
                         println!("successfully created node for this client");
+                        return Ok(());
                     }
                     Err(e) => {
                         println!("cannot create node for this client because {:?}", e);
-                        return Err(Box::new(CRDTError::ZKCreateZnodeFailed(child_path)));
+                        return Err(Box::new(CRDTError::RegisterUserFailed()));
                     }
-                }
-
-                let watch_res = zk.get_children(&path[..], false);
-
-                if let Ok(full_peer_list) = watch_res {
-                    for peer in full_peer_list {
-                        let peer_id = peer.parse::<u32>();
-                        match peer_id {
-                            Ok(peer_id) => {
-                                let child_path = format!("{}/{}", path, peer);
-                                let ip_addr_res = zk.get_data(&child_path[..], false);
-                                if let Ok(ip_addr) = ip_addr_res {
-                                    peers_remote.push(Peer {
-                                        client_id: peer_id,
-                                        ip_addr: String::from_utf8(ip_addr.0.clone()).unwrap(),
-                                    });
-                                }
-                            }
-                            Err(_) => println!("invalid client id"),
-                        }
-                    }
-                    return Ok(peers_remote);
                 }
             }
             Err(_) => println!("failed to connect to zk"),

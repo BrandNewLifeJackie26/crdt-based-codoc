@@ -280,3 +280,6 @@ mod zk_test {
         return (txn_rpc, txn_service, txn_background);
     }
 }
+
+#[cfg(test)]
+mod peer_rpc_test {}

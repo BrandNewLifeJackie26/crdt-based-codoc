@@ -14,7 +14,7 @@ pub type CRDTResult<T> = Result<T, Box<(dyn Error + Send + Sync)>>;
 pub enum CRDTError {
     RegisterUserFailed(),
     Unknown(String),
-    ZKCreateZnodeFailed(String),
+    BackgroundSyncFailed(String),
 }
 
 impl Display for CRDTError {
@@ -22,7 +22,7 @@ impl Display for CRDTError {
         let x = match self {
             CRDTError::RegisterUserFailed() => format!("cannot register user"),
             CRDTError::Unknown(x) => format!("unknown error: {}", x),
-            CRDTError::ZKCreateZnodeFailed(x) => format!("failed to create path: {}", x),
+            CRDTError::BackgroundSyncFailed(x) => format!("failed to sync in the background {}", x),
         };
         write!(f, "{}", x)
     }
