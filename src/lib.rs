@@ -222,6 +222,9 @@ mod zk_test {
             let succ = txn_service1.register().await;
             assert_eq!(true, succ);
         });
+
+        let wait = time::Duration::from_secs(2);
+        thread::sleep(wait);
         tokio::spawn(async move {
             let succ = txn_service2.register().await;
             assert_eq!(true, succ);

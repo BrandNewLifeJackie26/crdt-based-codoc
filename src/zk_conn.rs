@@ -51,6 +51,15 @@ impl Watcher for RegisterWatcher {
                                 channel: self.channel.clone(),
                             },
                         );
+                        // insert dummy node
+                        // TODO:
+                        let dummy_path = format!("/doc/dummy");
+                        let _ = zk.create(
+                            &dummy_path[..],
+                            "".as_bytes().to_vec(),
+                            Acl::open_unsafe().clone(),
+                            CreateMode::Persistent,
+                        );
                         if let Ok(peers) = watch_res {
                             // println!("successfully reset watch on the doc");
                             // find the new child
