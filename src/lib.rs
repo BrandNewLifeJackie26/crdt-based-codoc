@@ -105,6 +105,79 @@ mod local_tests {
         .await;
         assert_eq!(doc.to_string().await, "145278936".to_string());
     }
+
+    // Local insert and delete the whole string
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_delete_all() {
+        let cid = 1 as ClientID;
+        let mut doc = Doc::new("text".to_string(), cid);
+
+        doc.insert_local(
+            Content {
+                content: "123".to_string(),
+            },
+            0,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "123".to_string());
+
+        // Remove a whole block
+        doc.delete_local(0, 3).await;
+        assert_eq!(doc.to_string().await, "".to_string());
+    }
+
+    // Local insert and delete from beginning and end of a block
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_delete_block_beg_end() {
+        let cid = 1 as ClientID;
+        let mut doc = Doc::new("text".to_string(), cid);
+
+        doc.insert_local(
+            Content {
+                content: "12345".to_string(),
+            },
+            0,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "12345".to_string());
+
+        // Delete part of a block from the start
+        doc.delete_local(0, 3).await;
+        assert_eq!(doc.to_string().await, "45".to_string());
+
+        // Delete part of a block from then end
+        doc.delete_local(2, 1).await;
+        assert_eq!(doc.to_string().await, "4".to_string());
+    }
+
+    // Local insert and delete across multiple blocks
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_delete_across_blocks() {
+        let cid = 1 as ClientID;
+        let mut doc = Doc::new("text".to_string(), cid);
+
+        doc.insert_local(
+            Content {
+                content: "123".to_string(),
+            },
+            0,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "123".to_string());
+
+        doc.insert_local(
+            Content {
+                content: "456".to_string(),
+            },
+            3,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "123456".to_string());
+
+        // Delete part of a block from the start
+        doc.delete_local(2, 2).await;
+        assert_eq!(doc.to_string().await, "1256".to_string());
+    }
 }
 
 #[cfg(test)]
@@ -167,6 +240,8 @@ mod zk_test {
         thread::sleep(wait);
     }
 
+    // TODO: check current list of clients?
+    // is it possible to make sure the order of registration?
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn zk_new_register_broadcast_test() {
         let (sender1, receiver1): (Sender<()>, Receiver<()>) = channel(1);

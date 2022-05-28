@@ -1,5 +1,6 @@
 use crate::utils::ClientID;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Content {
     pub content: String,
@@ -9,6 +10,26 @@ pub struct Content {
 pub struct BlockID {
     pub client: ClientID,
     pub clock: u32,
+}
+
+impl Ord for BlockID {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.client == other.client {
+            self.clock.cmp(&other.clock)
+        } else {
+            self.client.cmp(&other.client)
+        }
+    }
+}
+
+impl PartialOrd for BlockID {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.client == other.client {
+            Some(self.clock.cmp(&other.clock))
+        } else {
+            Some(self.client.cmp(&other.client))
+        }
+    }
 }
 
 impl BlockID {
