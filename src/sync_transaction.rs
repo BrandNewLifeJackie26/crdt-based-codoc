@@ -17,6 +17,7 @@ use tonic::transport::Endpoint;
 // IMPORTANT: SyncTransaction will take in a created Doc and modify its states
 pub struct SyncTransaction {
     // local copy of the doc
+    pub doc_name: String,
     pub doc: Arc<Mutex<Doc>>,
     pub channels: Arc<Mutex<HashMap<ClientID, Channel>>>,
     // zookeeper utils
@@ -28,12 +29,14 @@ pub struct SyncTransaction {
 
 impl SyncTransaction {
     pub fn new(
+        doc_name: String,
         client: ClientID,
         doc: Arc<Mutex<Doc>>,
         channels: Arc<Mutex<HashMap<ClientID, Channel>>>,
         client_ip: String,
     ) -> Self {
         SyncTransaction {
+            doc_name: doc_name,
             doc: doc,
             channels: channels,
             client: client,
@@ -80,8 +83,11 @@ impl SyncTransaction {
 
             if let Some(new_channel) = real_channel.get(&client.client_id) {
                 let mut client = TxnServiceClient::new(new_channel.clone());
-                let local_doc = self.doc.lock().await;
-                let clock_serialized = serde_json::to_string(&local_doc.vector_clock);
+                let clock_serialized;
+                {
+                    let local_doc = self.doc.lock().await;
+                    clock_serialized = serde_json::to_string(&local_doc.vector_clock);
+                }
                 match clock_serialized {
                     // serialize the local vector clock send our through rpc
                     Ok(clock_serialized) => {
@@ -193,17 +199,12 @@ impl SyncTransaction {
 
     // consult zookeeper and sync with other peers when started
     pub async fn register(&self) -> bool {
-        let mut local_doc = self.doc.lock().await;
-        let reg_res = self.zk.register(local_doc.name.clone(), self.client).await;
-        if let Ok(reg_res) = reg_res {
-            println!(
-                "{:?} successfully get the peer list: {:?}",
-                self.client, reg_res
-            );
-            local_doc.peers = reg_res;
-            return true;
+        let reg_res = self.zk.register(self.doc_name.clone(), self.client).await;
+        if let Err(e) = reg_res {
+            println!("{:?} register user failed because of {:?}", self.client, e);
+            return false;
         }
-        false
+        true
     }
 }
 
@@ -239,6 +240,7 @@ impl TxnService for SyncTransaction {
         &self,
         request: tonic::Request<txn_rpc::RegisterRequest>,
     ) -> Result<tonic::Response<txn_rpc::Status>, tonic::Status> {
+        println!("{:?} received new node added notification", self.client);
         let temp_request = request.into_inner();
         let peers_remote_res: Result<Vec<Peer>, serde_json::Error> =
             serde_json::from_str(&temp_request.peer_list);

@@ -93,7 +93,7 @@ impl Doc {
         let right_res = self
             .find_block_idx(block.right_origin.clone(), left, false)
             .await;
-        if let Err(e) = right_res {
+        if let Err(_) = right_res {
             // not exist
             return false;
         }
@@ -246,20 +246,20 @@ impl Doc {
         let mut store_lock = store.lock().await;
 
         // Find the correct block to insert
-        let mut i = 0 as usize;
-        let mut curr = 0;
+        let mut idx = 0 as usize;
+        let mut prev_char_cnt = 0;
 
-        while curr < pos && i < store_lock.total_store.list.len() {
+        while prev_char_cnt < pos && idx < store_lock.total_store.list.len() {
             // TODO: what if pos < curr and the loop already break?
             let (curr_is_deleted, curr_content) = {
-                let curr_lock = store_lock.total_store.list[i].lock().await;
+                let curr_lock = store_lock.total_store.list[idx].lock().await;
                 (curr_lock.is_deleted, curr_lock.content.clone())
             };
 
             if !curr_is_deleted {
-                curr += curr_content.content.len() as u32;
+                prev_char_cnt += curr_content.content.len() as u32;
             }
-            i += 1;
+            idx += 1;
         }
 
         let new_block_clk;
@@ -289,34 +289,34 @@ impl Doc {
 
         // TODO:
         let (left_id, left_content) = {
-            if i > 0 {
-                let left_lock = store_lock.total_store.list[i - 1].lock().await;
+            if idx > 0 {
+                let left_lock = store_lock.total_store.list[idx - 1].lock().await;
                 (left_lock.id.clone(), left_lock.content.clone())
             } else {
                 (BlockID::default(), Content::default()) // INVALID
             }
         };
         let curr_id = {
-            if i < store_lock.total_store.list.len() && curr == pos {
-                let curr_lock = store_lock.total_store.list[i].lock().await;
+            if idx < store_lock.total_store.list.len() && prev_char_cnt == pos {
+                let curr_lock = store_lock.total_store.list[idx].lock().await;
                 curr_lock.id.clone()
             } else {
                 BlockID::default() // INVALID
             }
         };
 
-        if i == store_lock.total_store.list.len()
+        if idx == store_lock.total_store.list.len()
             && pos >= store_lock.to_string().await.len() as u32
         {
             // Append to the end
-            if i > 0 {
+            if idx > 0 {
                 let left_id = Some(left_id);
                 new_block.left_origin = left_id.clone();
                 store_lock.insert(new_block, left_id).await;
             } else {
                 store_lock.insert(new_block, None).await;
             }
-        } else if curr == pos {
+        } else if prev_char_cnt == pos {
             // Insert to i-th position in total_store
             let left_id = Some(left_id);
             new_block.left_origin = left_id.clone();
@@ -329,12 +329,15 @@ impl Doc {
             new_block.left_origin = left_id.clone();
             new_block.right_origin = Some(BlockID::new(
                 left_id.clone().unwrap().client,
-                left_id.clone().unwrap().clock + left_content_len - (curr - pos),
+                left_id.clone().unwrap().clock + left_content_len - (prev_char_cnt - pos),
             ));
 
             // Split the block
             store_lock
-                .split(left_id.clone().unwrap(), left_content_len - (curr - pos))
+                .split(
+                    left_id.clone().unwrap(),
+                    left_content_len - (prev_char_cnt - pos),
+                )
                 .await;
             store_lock.insert(new_block, left_id).await;
         }
@@ -407,6 +410,7 @@ impl Doc {
                 break;
             }
         }
+        // println!("-------Current start is : {:?}", i_start);
 
         let mut i_end = i_start;
         let mut curr_end = curr_start;
@@ -430,6 +434,7 @@ impl Doc {
                 curr_end += curr_content.content.len() as i32;
             }
         }
+        // println!("-------Current end is : {:?}", i_end);
 
         // Delete all blocks in (i_start, i_end) directly
         // Delete i_start and i_end according to the position
@@ -459,6 +464,8 @@ impl Doc {
             } else {
                 new_block_id = block_id.clone();
             }
+            // println!("----- Block id: {:?}", block_id);
+            // println!("----- NEW Block id: {:?}", new_blockID);
 
             if pos_end as i32 == curr_start {
                 store_lock.delete(new_block_id).await;
