@@ -145,9 +145,25 @@ mod local_tests {
         doc.delete_local(0, 3).await;
         assert_eq!(doc.to_string().await, "45".to_string());
 
-        // Delete part of a block from then end
-        doc.delete_local(2, 1).await;
+        // Delete part of a block till the end
+        doc.delete_local(1, 1).await;
         assert_eq!(doc.to_string().await, "4".to_string());
+
+        // Deleting some charater exceeding the whole doc should take no effect
+        doc.delete_local(2, 3).await;
+        assert_eq!(doc.to_string().await, "4".to_string());
+
+        // Deleting characters out of bound should take no effect either
+        doc.insert_local(
+            Content {
+                content: "567".to_string(),
+            },
+            1,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "4567".to_string());
+        doc.delete_local(2, 10).await;
+        assert_eq!(doc.to_string().await, "45".to_string());
     }
 
     // Local insert and delete across multiple blocks
@@ -178,6 +194,8 @@ mod local_tests {
         doc.delete_local(2, 2).await;
         assert_eq!(doc.to_string().await, "1256".to_string());
     }
+
+    // TODO: remote update, check all clients have the same doc eventually
 }
 
 #[cfg(test)]

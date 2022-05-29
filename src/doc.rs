@@ -1,5 +1,6 @@
 use crate::utils::{ClientID, Peer, Updates};
 use crate::{block::Content, block_store::BlockStore, Block, BlockID};
+use std::cmp::min;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -64,11 +65,12 @@ impl Doc {
     }
 
     /* Local operations */
+    // TODO: local operations should also grab mutex of the whole doc (as in SyncTransaction) to avoid concurrency issue
     pub async fn insert_remote(&mut self, update: Updates) {
         for block in update.iter() {
             // Try insert pending updates
-            self.flush_pending_updates().await;
-            // Try insert current updates
+            self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
+                                                // Try insert current updates
             let success = self.insert_single_block(block).await;
             if !success {
                 self.pending_updates.push(block.clone());
@@ -83,7 +85,7 @@ impl Doc {
         let left_res = self
             .find_block_idx(block.left_origin.clone(), 0, true)
             .await;
-        if let Err(e) = left_res {
+        if let Err(_) = left_res {
             // not exist
             return false;
         }
@@ -96,9 +98,9 @@ impl Doc {
             return false;
         }
         let right = right_res.unwrap();
-        let mut i = (left + 1) as usize;
+        let i = (left + 1) as usize;
         let mut scan = false;
-        let mut dest = (left + 1) as usize;
+        let mut dest = (left + 1) as usize; // TODO: right?
 
         let store = self.block_store.clone();
         let mut store_lock = store.lock().await;
@@ -110,13 +112,23 @@ impl Doc {
             if i == store_lock.total_store.list.len() || i == (right as usize) {
                 break;
             }
+
             let curr = &store_lock.total_store.list[i];
+            let (curr_id, curr_left_origin, curr_right_origin) = {
+                let curr_lock = curr.lock().await;
+                (
+                    curr_lock.id.clone(),
+                    curr_lock.left_origin.clone(),
+                    curr_lock.right_origin.clone(),
+                )
+            };
+
             let curr_ol = self
-                .find_block_idx(curr.left_origin.clone(), 0, true)
+                .find_block_idx(curr_left_origin, 0, true)
                 .await
                 .unwrap();
             let curr_or = self
-                .find_block_idx(curr.right_origin.clone(), curr_ol, false)
+                .find_block_idx(curr_right_origin, curr_ol, false)
                 .await
                 .unwrap();
 
@@ -127,7 +139,7 @@ impl Doc {
                     scan = true;
                     continue;
                 } else if curr_or == right {
-                    if block.id < curr.id {
+                    if block.id < curr_id {
                         break;
                     } else {
                         scan = false;
@@ -141,14 +153,16 @@ impl Doc {
                 continue;
             }
         }
+
         let new_block = block.clone();
         let left_id;
         if dest == 0 {
             left_id = None;
         } else {
-            left_id = Some(store_lock.total_store.list[dest - 1].id.clone());
+            let dest_lock = store_lock.total_store.list[dest - 1].lock().await;
+            left_id = Some(dest_lock.id.clone());
         }
-        store_lock.insert(new_block, left_id);
+        store_lock.insert(new_block, left_id).await;
         true
     }
 
@@ -159,20 +173,22 @@ impl Doc {
         let mut i = 0;
         let id = block.id.clone();
         while i < store_lock.total_store.list.len() {
-            if store_lock.total_store.list[i].id == id {
-                store_lock.delete(block.id.clone());
+            let (curr_id, curr_content) = {
+                let curr_lock = store_lock.total_store.list[i].lock().await;
+                (curr_lock.id.clone(), curr_lock.content.clone())
+            };
+
+            if curr_id == id {
+                store_lock.delete(block.id.clone()).await;
                 return true;
-            } else if store_lock.total_store.list[i].id.client == id.client
-                && store_lock.total_store.list[i].id.clock < id.clock
-                && store_lock.total_store.list[i].id.clock
-                    + store_lock.total_store.list[i].content.content.len() as u32
-                    - 1
-                    >= id.clock
+            } else if curr_id.client == id.client
+                && curr_id.clock < id.clock
+                && curr_id.clock + curr_content.content.len() as u32 - 1 >= id.clock
             {
-                let block_to_split = store_lock.total_store.list[i].id.clone();
-                let len = id.clock - store_lock.total_store.list[i].id.clock;
-                store_lock.split(block_to_split, len);
-                store_lock.delete(block.id.clone());
+                let block_to_split = curr_id.clone();
+                let len = id.clock - curr_id.clock;
+                store_lock.split(block_to_split, len).await;
+                store_lock.delete(block.id.clone()).await;
                 return true;
             }
             i += 1;
@@ -193,18 +209,20 @@ impl Doc {
             Some(id) => {
                 let mut i: usize = start_idx as usize;
                 while i < store_lock.total_store.list.len() {
-                    if store_lock.total_store.list[i].id == id {
+                    let (curr_id, curr_content) = {
+                        let curr_lock = store_lock.total_store.list[i].lock().await;
+                        (curr_lock.id.clone(), curr_lock.content.clone())
+                    };
+
+                    if curr_id == id {
                         return Ok(i as i64);
-                    } else if store_lock.total_store.list[i].id.client == id.client
-                        && store_lock.total_store.list[i].id.clock < id.clock
-                        && store_lock.total_store.list[i].id.clock
-                            + store_lock.total_store.list[i].content.content.len() as u32
-                            - 1
-                            >= id.clock
+                    } else if curr_id.client == id.client
+                        && curr_id.clock < id.clock
+                        && curr_id.clock + curr_content.content.len() as u32 - 1 >= id.clock
                     {
-                        let block_to_split = store_lock.total_store.list[i].id.clone();
-                        let len = id.clock - store_lock.total_store.list[i].id.clock;
-                        store_lock.split(block_to_split, len);
+                        let block_to_split = curr_id.clone();
+                        let len = id.clock - curr_id.clock;
+                        store_lock.split(block_to_split, len).await;
                         return Ok((i + 1) as i64);
                     }
                     i += 1;
@@ -231,22 +249,27 @@ impl Doc {
         let mut i = 0 as usize;
         let mut curr = 0;
 
-        while curr < pos && i < (*store_lock).total_store.list.len() {
+        while curr < pos && i < store_lock.total_store.list.len() {
             // TODO: what if pos < curr and the loop already break?
-            if !(*store_lock).total_store.list[i].is_deleted {
-                curr += (*store_lock).total_store.list[i].content.content.len() as u32;
+            let (curr_is_deleted, curr_content) = {
+                let curr_lock = store_lock.total_store.list[i].lock().await;
+                (curr_lock.is_deleted, curr_lock.content.clone())
+            };
+
+            if !curr_is_deleted {
+                curr += curr_content.content.len() as u32;
             }
             i += 1;
         }
 
         let new_block_clk;
         if store_lock.kv_store.contains_key(&self.client) {
-            let list = store_lock.kv_store.get(&self.client).unwrap().list.clone();
+            let list = &store_lock.kv_store.get(&self.client).unwrap().list;
             if list.len() == 0 {
                 new_block_clk = 0;
             } else {
-                new_block_clk = list.last().unwrap().id.clock
-                    + list.last().unwrap().content.content.len() as u32;
+                let last_lock = list.last().unwrap().lock().await;
+                new_block_clk = last_lock.id.clock + last_lock.content.content.len() as u32;
             }
         } else {
             new_block_clk = 0;
@@ -265,28 +288,44 @@ impl Doc {
         };
 
         // TODO:
-        if i == (*store_lock).total_store.list.len()
-            && curr == (*store_lock).to_string().len() as u32
+        let (left_id, left_content) = {
+            if i > 0 {
+                let left_lock = store_lock.total_store.list[i - 1].lock().await;
+                (left_lock.id.clone(), left_lock.content.clone())
+            } else {
+                (BlockID::default(), Content::default()) // INVALID
+            }
+        };
+        let curr_id = {
+            if i < store_lock.total_store.list.len() && curr == pos {
+                let curr_lock = store_lock.total_store.list[i].lock().await;
+                curr_lock.id.clone()
+            } else {
+                BlockID::default() // INVALID
+            }
+        };
+
+        if i == store_lock.total_store.list.len()
+            && pos >= store_lock.to_string().await.len() as u32
         {
             // Append to the end
             if i > 0 {
-                let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
+                let left_id = Some(left_id);
                 new_block.left_origin = left_id.clone();
-                (*store_lock).insert(new_block, left_id);
+                store_lock.insert(new_block, left_id).await;
             } else {
-                (*store_lock).insert(new_block, None);
+                store_lock.insert(new_block, None).await;
             }
         } else if curr == pos {
             // Insert to i-th position in total_store
-            let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
+            let left_id = Some(left_id);
             new_block.left_origin = left_id.clone();
-            new_block.right_origin = Some((*store_lock).total_store.list[i].id.clone());
-            (*store_lock).insert(new_block, left_id);
+            new_block.right_origin = Some(curr_id);
+            store_lock.insert(new_block, left_id).await;
         } else {
             // Have to split total_store[i-1]
-            let left_id = Some((*store_lock).total_store.list[i - 1].id.clone());
-            let left_content_len =
-                (*store_lock).total_store.list[i - 1].content.content.len() as u32;
+            let left_id = Some(left_id);
+            let left_content_len = left_content.content.len() as u32;
             new_block.left_origin = left_id.clone();
             new_block.right_origin = Some(BlockID::new(
                 left_id.clone().unwrap().client,
@@ -294,8 +333,10 @@ impl Doc {
             ));
 
             // Split the block
-            (*store_lock).split(left_id.clone().unwrap(), left_content_len - (curr - pos));
-            (*store_lock).insert(new_block, left_id);
+            store_lock
+                .split(left_id.clone().unwrap(), left_content_len - (curr - pos))
+                .await;
+            store_lock.insert(new_block, left_id).await;
         }
 
         // Update vector clock
@@ -325,7 +366,7 @@ impl Doc {
                 success = self.insert_single_block(pending).await;
             }
             if !success {
-                new_pending.push(pending.clone());
+                new_pending.push(pending.clone()); // TODO: does it take effect?
             }
         }
     }
@@ -334,18 +375,31 @@ impl Doc {
         let store = self.block_store.clone();
         let mut store_lock = store.lock().await;
 
+        // Pos out of range, no effect
+        let doc_len = store_lock.to_string().await.len() as u32;
+        if pos >= doc_len {
+            return;
+        }
+
         // Find the correct blocks to delete
         // The block may need to be splitted
+        // TODO: empty doc -> raise error
         let mut i_start = 0 as usize;
         let mut curr_start = -1;
 
         loop {
+            if i_start >= store_lock.total_store.list.len() {
+                break;
+            }
+
             // TODO: what if pos < curr_left and the loop already break?
-            if !(*store_lock).total_store.list[i_start].is_deleted {
-                curr_start += (*store_lock).total_store.list[i_start]
-                    .content
-                    .content
-                    .len() as i32;
+            let (curr_is_deleted, curr_content) = {
+                let curr_lock = store_lock.total_store.list[i_start].lock().await;
+                (curr_lock.is_deleted, curr_lock.content.clone())
+            };
+
+            if !curr_is_deleted {
+                curr_start += curr_content.content.len() as i32;
             }
             if curr_start < pos as i32 {
                 i_start += 1;
@@ -356,83 +410,100 @@ impl Doc {
 
         let mut i_end = i_start;
         let mut curr_end = curr_start;
-        let mut pos_end = pos + len - 1;
+        let pos_end = min(pos + len - 1, doc_len - 1);
         loop {
+            if i_end >= store_lock.total_store.list.len() {
+                break;
+            }
+
+            let (curr_is_deleted, curr_content) = {
+                let curr_lock = store_lock.total_store.list[i_end].lock().await;
+                (curr_lock.is_deleted, curr_lock.content.clone())
+            };
+
             if curr_end < pos_end as i32 {
                 i_end += 1;
             } else {
                 break;
             }
-            if !(*store_lock).total_store.list[i_end].is_deleted {
-                curr_end += (*store_lock).total_store.list[i_end].content.content.len() as i32;
+            if !curr_is_deleted {
+                curr_end += curr_content.content.len() as i32;
             }
         }
 
         // Delete all blocks in (i_start, i_end) directly
         // Delete i_start and i_end according to the position
+        let (start_id, start_content) = {
+            let start_lock = store_lock.total_store.list[i_start].lock().await;
+            (start_lock.id.clone(), start_lock.content.clone())
+        };
+        let (end_id, end_content) = {
+            let end_lock = store_lock.total_store.list[i_end].lock().await;
+            (end_lock.id.clone(), end_lock.content.clone())
+        };
+
         if i_start == i_end {
             // All texts to be deleted are in the same block
-            let block_id = (*store_lock).total_store.list[i_start].id.clone();
-            let length = (*store_lock).total_store.list[i_start]
-                .content
-                .content
-                .len() as u32;
+            let block_id = start_id.clone();
+            let length = start_content.content.len() as u32;
             // split into three Blocks
             // the middle one will be deleted
-            let left_length = length - (curr_start as u32 - pos) + 1; // TODO: ?
-            let mut new_blockID;
+            let left_length = length - (curr_start as u32 - pos + 1); // TODO: ?
+            let new_block_id;
             if left_length != 0 {
-                (*store_lock).split(block_id.clone(), left_length);
-                new_blockID = BlockID::new(
+                store_lock.split(block_id.clone(), left_length).await;
+                new_block_id = BlockID::new(
                     block_id.client.clone(),
                     block_id.clock.clone() + left_length,
                 );
             } else {
-                new_blockID = block_id.clone();
+                new_block_id = block_id.clone();
             }
 
             if pos_end as i32 == curr_start {
-                (*store_lock).delete(new_blockID);
+                store_lock.delete(new_block_id).await;
             } else {
-                let mid_length = pos_end - pos + 1;
-                (*store_lock).split(new_blockID.clone(), mid_length);
-                (*store_lock).delete(new_blockID);
+                let mid_length = len;
+                store_lock.split(new_block_id.clone(), mid_length).await;
+                store_lock.delete(new_block_id).await;
             }
         } else {
             // Delete all blocks in between
-            let mut i = i_start + 1;
+            let i = i_start + 1;
             while i < i_end {
-                let block_id = (*store_lock).total_store.list[i].id.clone();
-                (*store_lock).delete(block_id);
+                let curr_id = {
+                    let curr_lock = store_lock.total_store.list[i].lock().await;
+                    curr_lock.id.clone()
+                };
+
+                let block_id = curr_id.clone();
+                store_lock.delete(block_id).await;
             }
 
             // Delete left blocks
-            let length_start = (*store_lock).total_store.list[i_start]
-                .content
-                .content
-                .len() as u32;
-            let block_id_start = (*store_lock).total_store.list[i_start].id.clone();
-            let left_length = length_start - curr_start as u32 + pos - 1;
-            let mut new_blockID;
+            let length_start = start_content.content.len() as u32;
+            let block_id_start = start_id.clone();
+            let left_length = length_start - (curr_start as u32 - pos + 1);
+            let new_block_id;
             if left_length != 0 {
-                (*store_lock).split(block_id_start.clone(), left_length);
-                new_blockID = BlockID::new(
+                store_lock.split(block_id_start.clone(), left_length).await;
+                new_block_id = BlockID::new(
                     block_id_start.client.clone(),
                     block_id_start.clock.clone() + left_length,
                 );
             } else {
-                new_blockID = block_id_start.clone();
+                new_block_id = block_id_start.clone();
             }
-            (*store_lock).delete(new_blockID);
+            store_lock.delete(new_block_id).await;
 
             // Delete right blocks
-            let length_end = (*store_lock).total_store.list[i_end].content.content.len() as u32;
-            let block_id_end = (*store_lock).total_store.list[i_end].id.clone();
-            let right_length = length_end - curr_end as u32 + pos;
+            let length_end = end_content.content.len() as u32;
+            let block_id_end = end_id.clone();
+            let right_length = length_end - (curr_end as u32 - pos_end);
             if curr_end != pos_end as i32 {
-                (*store_lock).split(block_id_end.clone(), right_length);
+                store_lock.split(block_id_end.clone(), right_length).await;
             }
-            (*store_lock).delete(block_id_end);
+            store_lock.delete(block_id_end).await;
         }
 
         // Update vector clock
@@ -442,6 +513,6 @@ impl Doc {
     pub async fn to_string(&self) -> String {
         let store = self.block_store.clone();
         let store_lock = store.lock().await;
-        (*store_lock).to_string()
+        store_lock.to_string().await
     }
 }

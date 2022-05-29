@@ -1,12 +1,13 @@
 use crate::utils::ClientID;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-#[derive(Clone, Serialize, Deserialize, Debug)]
+use std::{cmp::Ordering, sync::Arc};
+use tokio::sync::Mutex;
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct Content {
     pub content: String,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Hash, Debug, Default)]
 pub struct BlockID {
     pub client: ClientID,
     pub clock: u32,
@@ -38,7 +39,7 @@ impl BlockID {
     }
 }
 
-pub type BlockPtr = Box<Block>;
+pub type BlockPtr = Arc<Mutex<Block>>;
 
 // Block is the basic building block of doc (e.g. text, xml element, etc.),
 // one block can be split to two blocks,
@@ -68,8 +69,23 @@ impl Block {
         }
     }
 
+    pub fn init() -> Self {
+        Block {
+            id: BlockID {
+                client: 0,
+                clock: 0,
+            },
+            left_origin: None,
+            right_origin: None,
+            is_deleted: false,
+            content: Content {
+                content: "".to_string(),
+            },
+        }
+    }
+
     // Delete the current block (mark as deleted)
     pub fn delete(&mut self) {
-        self.is_deleted = false;
+        self.is_deleted = true;
     }
 }

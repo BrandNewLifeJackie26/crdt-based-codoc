@@ -175,7 +175,8 @@ impl SyncTransaction {
                     Some(block) => {
                         let vec = block.iter();
                         for b in vec {
-                            res.push((**b).clone());
+                            let b_lock = b.lock().await;
+                            res.push(b_lock.clone());
                         }
                     }
                     None => {
