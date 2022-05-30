@@ -243,7 +243,6 @@ mod zk_test {
         thread::sleep(wait);
     }
 
-    // TODO: check current list of clients?
     // is it possible to make sure the order of registration?
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn zk_register_test_more_nodes() {
