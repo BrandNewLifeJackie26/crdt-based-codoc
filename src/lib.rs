@@ -1,4 +1,5 @@
 pub mod crdt;
+pub mod wasm;
 
 #[cfg(test)]
 mod local_tests {
@@ -191,7 +192,7 @@ mod local_tests {
         use std::sync::Arc;
 
         use crate::crdt::doc::Doc;
-        use crate::crdt::sync_transaction::SyncTransaction;
+        use crate::crdt::sync_txn::SyncTransaction;
         use crate::crdt::utils::{serve_rpc, ClientID};
         use std::{thread, time};
         use tokio::sync::mpsc::channel;

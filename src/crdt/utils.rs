@@ -3,7 +3,7 @@ use std::net::ToSocketAddrs;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::crdt::{
-    block::Block, sync_transaction::SyncTransaction, txn_rpc::txn_service_server::TxnServiceServer,
+    block::Block, sync_txn::SyncTransaction, txn_rpc::txn_service_server::TxnServiceServer,
 };
 use std::{error::Error, fmt::Display};
 

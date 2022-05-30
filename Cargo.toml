@@ -18,6 +18,7 @@ tokio-stream = { version = "0.1", features = ["net"] }
 tonic = "0.6"
 zookeeper = "0.5"
 clap = { version = "3.1", features = ["derive"] }
+wasm-bindgen = { version = "0.2" }
 
 [dev-dependencies]
 env_logger = "0.9"
