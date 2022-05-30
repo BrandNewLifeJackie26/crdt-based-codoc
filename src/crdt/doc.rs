@@ -74,11 +74,14 @@ impl Doc {
             let success = self.insert_single_block(block).await;
             if !success {
                 self.pending_updates.push(block.clone());
+            } else {
+                self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
             }
         }
     }
 
     pub async fn insert_single_block(&mut self, block: &Block) -> bool {
+        println!("insert single block");
         // Try insert, return false if failed, return true if success
         // First find the block corresponding the left_origin and right_origin
 
@@ -89,6 +92,7 @@ impl Doc {
             // not exist
             return false;
         }
+
         let left = left_res.unwrap();
         let right_res = self
             .find_block_idx(block.right_origin.clone(), left, false)
@@ -97,15 +101,15 @@ impl Doc {
             // not exist
             return false;
         }
+
         let right = right_res.unwrap();
-        let i = (left + 1) as usize;
+        let mut i = (left + 1) as usize;
         let mut scan = false;
         let mut dest = (left + 1) as usize; // TODO: right?
 
-        let store = self.block_store.clone();
-        let mut store_lock = store.lock().await;
-
         loop {
+            let store = self.block_store.clone();
+            let mut store_lock = store.lock().await;
             if !scan {
                 dest = i;
             }
@@ -122,6 +126,7 @@ impl Doc {
                     curr_lock.right_origin.clone(),
                 )
             };
+            drop(store_lock);
 
             let curr_ol = self
                 .find_block_idx(curr_left_origin, 0, true)
@@ -137,16 +142,19 @@ impl Doc {
             } else if curr_ol == left {
                 if curr_or < right {
                     scan = true;
+                    i += 1;
                     continue;
                 } else if curr_or == right {
                     if block.id < curr_id {
                         break;
                     } else {
                         scan = false;
+                        i += 1;
                         continue;
                     }
                 } else {
                     scan = false;
+                    i += 1;
                     continue;
                 }
             } else {
@@ -154,6 +162,8 @@ impl Doc {
             }
         }
 
+        let store = self.block_store.clone();
+        let mut store_lock = store.lock().await;
         let new_block = block.clone();
         let left_id;
         if dest == 0 {
@@ -354,6 +364,7 @@ impl Doc {
             // Try insert current updates
             let success = self.delete_single_block(block).await;
             if !success {
+                println!("delete failed");
                 self.pending_updates.push(block.clone());
             }
         }

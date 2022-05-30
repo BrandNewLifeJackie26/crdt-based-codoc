@@ -364,3 +364,290 @@ mod local_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod remote_test {
+    use crate::crdt::block::Block;
+    use crate::crdt::block::BlockID;
+    use crate::crdt::block::Content;
+    use crate::crdt::doc::Doc;
+    use crate::crdt::utils::ClientID;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn remote_insert_None() {
+        let cid = 1 as ClientID;
+        let mut doc1 = Doc::new("text".to_string(), cid);
+
+        doc1.insert_local(
+            Content {
+                content: "1234567".to_string(),
+            },
+            0,
+        )
+        .await;
+
+        let mut updates = vec![];
+        let new_block: Block = Block {
+            id: BlockID {
+                client: 2,
+                clock: 100,
+            },
+            left_origin: None,
+            right_origin: None,
+            is_deleted: false,
+            content: Content {
+                content: "NEW2".to_string(),
+            },
+        };
+        updates.push(new_block);
+
+        doc1.insert_remote(updates).await;
+
+        assert_eq!(doc1.to_string().await, "1234567NEW2".to_string());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn remote_insert_split() {
+        let cid = 1 as ClientID;
+        let mut doc1 = Doc::new("text".to_string(), cid);
+
+        doc1.insert_local(
+            Content {
+                content: "1234567".to_string(),
+            },
+            0,
+        )
+        .await;
+        let store = doc1.block_store.clone();
+        let store_lock = store.lock().await;
+        let id = store_lock.kv_store.get(&1).unwrap().list[0]
+            .clone()
+            .lock()
+            .await
+            .id
+            .clone();
+        drop(store_lock);
+
+        let mut updates = vec![];
+        let new_block: Block = Block {
+            id: BlockID {
+                client: 2,
+                clock: 100,
+            },
+            left_origin: Some(id.clone()),
+            right_origin: Some(BlockID {
+                client: id.client,
+                clock: id.clock + 2,
+            }),
+            is_deleted: false,
+            content: Content {
+                content: "NEW2".to_string(),
+            },
+        };
+        updates.push(new_block);
+
+        doc1.insert_remote(updates).await;
+
+        assert_eq!(doc1.to_string().await, "12NEW234567".to_string());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn remote_insert_non_split() {
+        let cid = 1 as ClientID;
+        let mut doc1 = Doc::new("text".to_string(), cid);
+
+        doc1.insert_local(
+            Content {
+                content: "1234567".to_string(),
+            },
+            0,
+        )
+        .await;
+        doc1.insert_local(
+            Content {
+                content: "aabbccdd".to_string(),
+            },
+            7,
+        )
+        .await;
+        let store = doc1.block_store.clone();
+        let store_lock = store.lock().await;
+        let left = store_lock.kv_store.get(&1).unwrap().list[0]
+            .clone()
+            .lock()
+            .await
+            .id
+            .clone();
+        let right = store_lock.kv_store.get(&1).unwrap().list[1]
+            .clone()
+            .lock()
+            .await
+            .id
+            .clone();
+        drop(store_lock);
+
+        let mut updates = vec![];
+        let new_block: Block = Block {
+            id: BlockID {
+                client: 2,
+                clock: 100,
+            },
+            left_origin: Some(left),
+            right_origin: Some(right),
+            is_deleted: false,
+            content: Content {
+                content: "NEW2".to_string(),
+            },
+        };
+        updates.push(new_block);
+
+        doc1.insert_remote(updates).await;
+
+        assert_eq!(doc1.to_string().await, "1234567NEW2aabbccdd".to_string());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn remote_merge_conflict_insert() {
+        let cid = 1 as ClientID;
+        let mut doc1 = Doc::new("text".to_string(), cid);
+
+        doc1.insert_local(
+            Content {
+                content: "1234567".to_string(),
+            },
+            0,
+        )
+        .await;
+        doc1.insert_local(
+            Content {
+                content: "aabbccdd".to_string(),
+            },
+            7,
+        )
+        .await;
+        let store = doc1.block_store.clone();
+        let store_lock = store.lock().await;
+        let left = store_lock.kv_store.get(&1).unwrap().list[0]
+            .clone()
+            .lock()
+            .await
+            .id
+            .clone();
+        let right = store_lock.kv_store.get(&1).unwrap().list[1]
+            .clone()
+            .lock()
+            .await
+            .id
+            .clone();
+        drop(store_lock);
+
+        let mut updates = vec![];
+        let new_block: Block = Block {
+            id: BlockID {
+                client: 2,
+                clock: 100,
+            },
+            left_origin: Some(left.clone()),
+            right_origin: Some(right.clone()),
+            is_deleted: false,
+            content: Content {
+                content: "NEW2".to_string(),
+            },
+        };
+        updates.push(new_block);
+        doc1.insert_remote(updates).await;
+
+        let mut updates = vec![];
+        let new_block: Block = Block {
+            id: BlockID {
+                client: 14,
+                clock: 21,
+            },
+            left_origin: Some(left),
+            right_origin: Some(right),
+            is_deleted: false,
+            content: Content {
+                content: "FROM14".to_string(),
+            },
+        };
+        updates.push(new_block);
+
+        doc1.insert_remote(updates).await;
+
+        assert_eq!(
+            doc1.to_string().await,
+            "1234567NEW2FROM14aabbccdd".to_string()
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn remote_delete_reverse_order() {
+        let cid = 1 as ClientID;
+        let mut doc1 = Doc::new("text".to_string(), cid);
+
+        doc1.insert_local(
+            Content {
+                content: "1234567".to_string(),
+            },
+            0,
+        )
+        .await;
+        doc1.insert_local(
+            Content {
+                content: "aabbccdd".to_string(),
+            },
+            7,
+        )
+        .await;
+        let store = doc1.block_store.clone();
+        let store_lock = store.lock().await;
+        let left = store_lock.kv_store.get(&1).unwrap().list[0]
+            .clone()
+            .lock()
+            .await
+            .id
+            .clone();
+        let right = store_lock.kv_store.get(&1).unwrap().list[1]
+            .clone()
+            .lock()
+            .await
+            .id
+            .clone();
+        drop(store_lock);
+
+        let mut updates = vec![];
+        let new_block: Block = Block {
+            id: BlockID {
+                client: 14,
+                clock: 21,
+            },
+            left_origin: Some(left.clone()),
+            right_origin: Some(right.clone()),
+            is_deleted: true,
+            content: Content {
+                content: "NEW2".to_string(),
+            },
+        };
+        updates.push(new_block);
+        doc1.delete_remote(updates).await;
+
+        let mut updates = vec![];
+        let new_block: Block = Block {
+            id: BlockID {
+                client: 14,
+                clock: 21,
+            },
+            left_origin: Some(left),
+            right_origin: Some(right),
+            is_deleted: false,
+            content: Content {
+                content: "FROM14".to_string(),
+            },
+        };
+        updates.push(new_block);
+
+        doc1.insert_remote(updates).await;
+
+        assert_eq!(doc1.to_string().await, "1234567aabbccdd".to_string());
+    }
+}
