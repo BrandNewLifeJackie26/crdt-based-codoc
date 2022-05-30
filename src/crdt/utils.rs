@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::net::ToSocketAddrs;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
-use crate::{
+use crate::crdt::{
     block::Block, sync_transaction::SyncTransaction, txn_rpc::txn_service_server::TxnServiceServer,
 };
 use std::{error::Error, fmt::Display};

@@ -1,20 +1,10 @@
-pub mod block;
-pub mod block_store;
-pub mod doc;
-pub mod list;
-pub mod sync_transaction;
-pub mod txn_rpc;
-pub mod utils;
-pub mod zk_conn;
-pub use crate::block::Block;
-pub use crate::block::BlockID;
-pub use crate::block_store::BlockStore;
+pub mod crdt;
 
 #[cfg(test)]
 mod local_tests {
-    use crate::block::Content;
-    use crate::doc::Doc;
-    use crate::utils::ClientID;
+    use crate::crdt::block::Content;
+    use crate::crdt::doc::Doc;
+    use crate::crdt::utils::ClientID;
 
     // Local insert to a single doc (one letter at a time),
     // there is no need to use transaction if no sync is needed
@@ -200,9 +190,9 @@ mod local_tests {
         use std::collections::HashMap;
         use std::sync::Arc;
 
-        use crate::doc::Doc;
-        use crate::sync_transaction::SyncTransaction;
-        use crate::utils::{serve_rpc, ClientID};
+        use crate::crdt::doc::Doc;
+        use crate::crdt::sync_transaction::SyncTransaction;
+        use crate::crdt::utils::{serve_rpc, ClientID};
         use std::{thread, time};
         use tokio::sync::mpsc::channel;
         use tokio::sync::mpsc::{Receiver, Sender};

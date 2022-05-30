@@ -24,4 +24,3 @@ env_logger = "0.9"
 
 [build-dependencies]
 tonic-build = { version = "0.6", features = ["rustfmt"] }
-

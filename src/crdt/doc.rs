@@ -1,5 +1,5 @@
-use crate::utils::{ClientID, Peer, Updates};
-use crate::{block::Content, block_store::BlockStore, Block, BlockID};
+use crate::crdt::utils::{ClientID, Peer, Updates};
+use crate::crdt::{block::Content, block_store::BlockStore, Block, BlockID};
 use std::cmp::min;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;

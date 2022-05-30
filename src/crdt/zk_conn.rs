@@ -1,6 +1,6 @@
 #![deny(unused_mut)]
 extern crate zookeeper;
-use crate::{
+use crate::crdt::{
     txn_rpc::{self, txn_service_client::TxnServiceClient},
     utils::{CRDTError, CRDTResult, ClientID, Peer},
 };

@@ -1,7 +1,7 @@
 use tokio::sync::Mutex;
 
-use crate::block::{Block, BlockID, BlockPtr, Content};
-use crate::utils::ClientID;
+use crate::crdt::block::{Block, BlockID, BlockPtr, Content};
+use crate::crdt::utils::ClientID;
 use std::collections::HashMap;
 use std::sync::Arc;
 
