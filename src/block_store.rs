@@ -1,6 +1,9 @@
+use tokio::sync::Mutex;
+
 use crate::block::{Block, BlockID, BlockPtr, Content};
 use crate::utils::ClientID;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub type BlockListPtr = Box<BlockList>;
 
@@ -26,40 +29,47 @@ impl BlockList {
 // it also cannot be modified except by Doc
 // TODO: block_map, kv_store and total_store are not using the same block
 pub struct BlockStore {
-    pub block_map: Box<HashMap<BlockID, BlockPtr>>,
-    pub kv_store: Box<HashMap<ClientID, BlockListPtr>>,
-    pub total_store: BlockListPtr,
+    pub block_map: HashMap<BlockID, BlockPtr>,
+    pub kv_store: HashMap<ClientID, BlockList>,
+    pub total_store: BlockList,
 }
 
 impl BlockStore {
     pub fn new() -> Self {
         BlockStore {
-            block_map: Box::new(HashMap::new()),
-            kv_store: Box::new(HashMap::new()),
-            total_store: Box::new(BlockList::new()),
+            block_map: HashMap::new(),
+            kv_store: HashMap::new(),
+            total_store: BlockList::new(),
         }
     }
 
     // Insert the new block to the position
     // right to the block with BlockID left_id
-    pub fn insert(&mut self, block: Block, left_id: Option<BlockID>) {
-        let block_id = block.id.clone();
-        let block_ptr = Box::new(block);
+    pub async fn insert(&mut self, block: Block, left_id: Option<BlockID>) {
+        // println!(
+        //     "Calling insert, block = {:?}, left_id = {:?},total_store = {:?}",
+        //     block, left_id, self.total_store.list
+        // );
 
-        let total_store = self.total_store.as_mut();
+        let block_id = block.id.clone();
+        let block_ptr = Arc::new(Mutex::new(block));
+
         match left_id {
             Some(left_id) => {
                 let mut i = 0 as usize;
-                for b in total_store.list.iter() {
-                    if b.id == left_id {
-                        break;
+                for b in &self.total_store.list {
+                    {
+                        let b_lock = b.lock().await;
+                        if b_lock.id == left_id {
+                            break;
+                        }
                     }
                     i += 1;
                 }
-                total_store.list.insert(i + 1, block_ptr.clone());
+                self.total_store.list.insert(i + 1, block_ptr.clone());
             }
             None => {
-                total_store.list.insert(0, block_ptr.clone());
+                self.total_store.list.insert(0, block_ptr.clone());
             }
         }
 
@@ -68,65 +78,69 @@ impl BlockStore {
     }
 
     // Delete the content of length len from pos
-    pub fn delete(&self, block_id: BlockID) {
-        let mut block_map = self.block_map.clone();
-        let block = block_map.get_mut(&block_id);
+    pub async fn delete(&mut self, block_id: BlockID) {
+        let block = self.block_map.get_mut(&block_id);
         if let Some(block) = block {
-            block.delete();
+            let mut block_lock = block.lock().await;
+            block_lock.delete();
         }
     }
 
     // optimization: Split the block into a part of len
     // and rest of the block
-    pub fn split(&mut self, block_id: BlockID, len: u32) {
+    pub async fn split(&mut self, block_id: BlockID, len: u32) {
         let block = {
-            let block_map = self.block_map.as_mut();
-
-            if let Some(block_ptr) = block_map.get_mut(&block_id) {
+            if let Some(block_ptr) = self.block_map.get(&block_id) {
                 Some(block_ptr)
             } else {
                 None
             }
         };
-        println!(
-            "Calling split, blockid = {:?}, block = {:?}, len = {}",
-            block_id.clone(),
-            block,
-            len
-        );
+        // println!(
+        //     "Calling split, blockid = {:?}, block = {:?}, len = {}",
+        //     block_id.clone(),
+        //     block,
+        //     len
+        // );
 
         let len = len as usize;
+        let mut right_block: Option<Block> = None;
         if let Some(block) = block {
+            let mut block_lock = block.lock().await;
+
             // It is impossible to split the block into a part
             // that has a longer content than the original
-            if len > block.content.content.len() {
+            if len > block_lock.content.content.len() {
                 return;
             }
 
             let left_content = Content {
-                content: String::from(&block.content.content[..len]),
+                content: String::from(&block_lock.content.content[..len]),
             };
             let right_content = Content {
-                content: String::from(&block.content.content[len..]),
+                content: String::from(&block_lock.content.content[len..]),
             };
 
             // Create a new block to hold right content
             let right_block_id = BlockID {
-                client: block.id.client,
-                clock: block.id.clock + len as u32,
+                client: block_lock.id.client,
+                clock: block_lock.id.clock + len as u32,
             };
-            let right_block = Block {
+            right_block = Some(Block {
                 id: right_block_id.clone(),
                 left_origin: Some(block_id.clone()),
-                right_origin: block.right_origin.clone(),
+                right_origin: block_lock.right_origin.clone(),
                 is_deleted: false,
                 content: right_content,
-            };
+            });
 
             // Modify the left block
-            block.content = left_content;
-            block.right_origin = Some(right_block_id.clone());
-            self.insert(right_block, Some(block_id.clone()));
+            block_lock.content = left_content;
+            block_lock.right_origin = Some(right_block_id.clone());
+        }
+
+        if let Some(right_block) = right_block {
+            self.insert(right_block, Some(block_id.clone())).await;
         }
     }
 
@@ -134,32 +148,40 @@ impl BlockStore {
     pub async fn squash(&mut self, block_ids: Vec<BlockID>) {}
 
     // Form a string by connecting all elements in the current BlockList
-    pub fn to_string(&self) -> String {
+    pub async fn to_string(&self) -> String {
+        // println!(
+        //     "Calling to_string, total_store: {:?}",
+        //     self.total_store.list
+        // );
+
         let mut res: Vec<String> = vec![];
-        for block in self.total_store.list.iter() {
-            res.push(block.content.content.clone());
+        for block in &self.total_store.list {
+            let block_lock = block.lock().await;
+            if block_lock.is_deleted {
+                continue;
+            }
+            res.push(block_lock.content.content.clone());
         }
         res.into_iter().collect()
     }
 
     // Update BlockStore state
-    fn update_state(&mut self, new_block_id: BlockID, new_block: Box<Block>) {
-        let block_map = self.block_map.as_mut();
-        let kv_store = self.kv_store.as_mut();
+    fn update_state(&mut self, new_block_id: BlockID, new_block: Arc<Mutex<Block>>) {
+        self.block_map
+            .insert(new_block_id.clone(), new_block.clone());
 
-        block_map.insert(new_block_id.clone(), new_block.clone());
-        let client_block_list = kv_store.get_mut(&new_block_id.client);
+        let client_block_list = self.kv_store.get_mut(&new_block_id.client);
         match client_block_list {
             None => {
-                kv_store.insert(
+                self.kv_store.insert(
                     new_block_id.client,
-                    Box::new(BlockList {
-                        list: vec![new_block],
-                    }),
+                    BlockList {
+                        list: vec![new_block.clone()],
+                    },
                 );
             }
             Some(client_block_list) => {
-                client_block_list.list.push(new_block);
+                client_block_list.list.push(new_block.clone());
             }
         };
     }
