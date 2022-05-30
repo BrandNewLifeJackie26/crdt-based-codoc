@@ -763,8 +763,6 @@ mod remote_test {
         updates.push(new_block);
 
         doc1.insert_remote(updates).await;
-        let store_lock = store.lock().await;
-        println!("{:?}", store_lock.kv_store.get(&14));
 
         assert_eq!(
             doc1.to_string().await,
