@@ -11,6 +11,7 @@ pub type BlockListPtr = Box<BlockList>;
 // the position in the vector indicates its spatial order
 //
 // i.e. if block represents text, ["1", "2"] represents string "12"
+#[derive(Debug)]
 pub struct BlockList {
     pub list: Vec<BlockPtr>,
 }
