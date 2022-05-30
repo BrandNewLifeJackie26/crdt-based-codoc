@@ -56,7 +56,7 @@ pub async fn serve_rpc(
 
     tokio::spawn(async move {
         let _ = receiver_r.recv().await;
-        txn_bg.zk.background_sync(doc_name, sender).await;
+        let _ = txn_bg.zk.background_sync(doc_name, sender).await;
     });
 
     let txn_rpc = TxnServiceServer::new(txn);
