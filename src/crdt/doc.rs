@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 // it is used during synchronization to find the missing changes
 
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::convert::FromWasmAbi;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VectorClock {
     pub clock_map: HashMap<ClientID, u32>,
