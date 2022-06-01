@@ -1,27 +1,11 @@
-[package]
-name = "crdt-based-codoc"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = [
+    "transport",
+    "crdt",
+    "wasm_client",
+    "wasm_server",
+]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-intrusive-collections = "0.9"
-async-trait = "0.1.53"
-log = "0.4"
-prost = "0.9"
-rand = "0.8"
-serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
-tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
-tokio-stream = { version = "0.1", features = ["net"] }
-tonic = "0.6"
-zookeeper = "0.5"
-clap = { version = "3.1", features = ["derive"] }
-wasm-bindgen = { version = "0.2" }
-
-[dev-dependencies]
-env_logger = "0.9"
-
-[build-dependencies]
-tonic-build = { version = "0.6", features = ["rustfmt"] }
+[patch.crates-io]
+tonic = { git = "https://github.com/boxdot/tonic", rev = "2ed4144" }
+tonic-build = { git = "https://github.com/boxdot/tonic", rev = "2ed4144" }

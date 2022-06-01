@@ -1,0 +1,31 @@
+[package]
+name = "wasm_server"
+version = "0.1.0"
+authors = ["boxdot <d@zerovolt.org>"]
+edition = "2018"
+
+[[bin]]
+name = "server"
+path = "src/server.rs"
+
+[dependencies]
+crdt = { path = "../crdt" }
+intrusive-collections = "0.9"
+async-trait = "0.1.53"
+log = "0.4"
+prost = "0.8"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "time", "sync", "rt"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = { version = "0.5.0", features = ["client", "codegen", "prost"] }
+zookeeper = "0.5"
+tonic-ws-transport = { path = "../transport", default-features = false, features = ["web"] }
+tokio-tungstenite = "0.14.0"
+futures-util = "0.3.12"
+
+[dev-dependencies]
+env_logger = "0.9"
+
+[build-dependencies]
+tonic-build = { version = "0.5", features = ["prost"] }

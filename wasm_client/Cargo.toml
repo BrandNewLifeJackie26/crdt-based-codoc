@@ -1,0 +1,26 @@
+
+[package]
+name = "wasm_client"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.1", features = ["sync", "rt"] }
+tonic = { version = "0.5.0", default-features = false, features = ["client", "codegen", "prost"] }
+wasm-bindgen = { version = "0.2" }
+js-sys = "^0.3"
+tonic-ws-transport = { path = "../transport", default-features = false, features = ["web"] }
+prost = "0.8.0"
+wasm-bindgen-futures = "0.4.20"
+
+[dev-dependencies]
+env_logger = "0.9"
+
+[build-dependencies]
+# Note: no "transport" feature => generated client does not have transport dependent code
+tonic-build = { version = "0.5.0", default-features = false, features = ["prost", "rustfmt"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]

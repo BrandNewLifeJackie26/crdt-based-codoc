@@ -1,9 +1,7 @@
 #![deny(unused_mut)]
 extern crate zookeeper;
-use crate::crdt::{
-    txn_rpc::{self, txn_service_client::TxnServiceClient},
-    utils::{CRDTError, CRDTResult, ClientID, Peer},
-};
+use crate::txn_rpc::{self, txn_service_client::TxnServiceClient};
+use crate::utils::{CRDTError, CRDTResult, ClientID, Peer};
 use std::time::Duration;
 use tokio::{
     runtime::Runtime,
@@ -95,7 +93,7 @@ pub struct ZooKeeperConnection {
 
 impl ZooKeeperConnection {
     pub async fn background_sync(&self, doc: String, sender: Sender<()>) -> CRDTResult<()> {
-        println!("background sync process started!");
+        println!("[zk] background sync process started!");
         let path = format!("/{}", doc);
         let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
         let (sender_block, mut receiver_block): (Sender<()>, Receiver<()>) = channel(1);
@@ -107,7 +105,7 @@ impl ZooKeeperConnection {
                 Ok(exists) => {
                     if let None = exists {
                         // this file does not exist, create one
-                        println!("creating the doc directory");
+                        println!("[zk] creating the doc directory");
                         let create_res = zk.create(
                             &path[..],
                             "".as_bytes().to_vec(),
@@ -115,12 +113,12 @@ impl ZooKeeperConnection {
                             CreateMode::Persistent,
                         );
                         if let Err(e) = create_res {
-                            println!("{:?}", e);
+                            println!("[zk] failed to create node: {:?}", e);
                         }
                     }
                 }
                 Err(e) => {
-                    println!("{:?}", e);
+                    println!("[zk] failed to connect to zookeeper: {:?}", e);
                     return Err(Box::new(CRDTError::BackgroundSyncFailed(path)));
                 }
             }
@@ -146,15 +144,17 @@ impl ZooKeeperConnection {
                                 );
                             }
                             Err(_) => {
+                                println!("[zk] zookeepeer failed to connect to local node");
                                 return Err(Box::new(CRDTError::BackgroundSyncFailed(
-                                    "zookeepeer failed to connect to local node".to_string(),
+                                    "[zk] zookeepeer failed to connect to local node".to_string(),
                                 )));
                             }
                         }
                     }
                     Err(_) => {
+                        println!("[zk] zookeepeer failed to connect to endpoint");
                         return Err(Box::new(CRDTError::BackgroundSyncFailed(
-                            "zookeepeer failed to connect to endpoint".to_string(),
+                            "[zk] zookeepeer failed to connect to endpoint".to_string(),
                         )));
                     }
                 }
@@ -162,7 +162,7 @@ impl ZooKeeperConnection {
             }
         } else {
             return Err(Box::new(CRDTError::BackgroundSyncFailed(
-                "failed to start zookeeper".to_string(),
+                "[zk] failed to start zookeeper".to_string(),
             )));
         }
     }
@@ -173,10 +173,10 @@ impl ZooKeeperConnection {
 
         match zk {
             Ok(zk) => {
-                println!("connected to {:?}", ZK_ADDR);
+                println!("[zk] connected to {:?}", ZK_ADDR);
                 // create the child node
                 let child_path = format!("/{}/{}", doc, client);
-                println!("the child path is {:?}", child_path);
+                println!("[zk] the child path is {:?}", child_path);
                 let res = zk.create(
                     &child_path[..],
                     self.client_ip.as_bytes().to_vec(),
@@ -186,16 +186,16 @@ impl ZooKeeperConnection {
 
                 match res {
                     Ok(_) => {
-                        println!("successfully created node for this client");
+                        println!("[zk] successfully created node for this client");
                         return Ok(());
                     }
                     Err(e) => {
-                        println!("cannot create node for this client because {:?}", e);
+                        println!("[zk] cannot create node for this client because {:?}", e);
                         return Err(Box::new(CRDTError::RegisterUserFailed()));
                     }
                 }
             }
-            Err(_) => println!("failed to connect to zk"),
+            Err(_) => println!("[zk] failed to connect to zk"),
         }
         Err(Box::new(CRDTError::RegisterUserFailed()))
     }

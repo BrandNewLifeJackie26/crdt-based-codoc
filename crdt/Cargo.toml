@@ -1,0 +1,26 @@
+
+[package]
+name = "crdt"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+intrusive-collections = "0.9"
+async-trait = "0.1.53"
+log = "0.4"
+prost = "0.8"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+tokio = { version = "1.1", features = ["rt-multi-thread", "macros", "time", "sync", "rt"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = { version = "0.5.0", features = ["client", "codegen", "prost"] }
+zookeeper = "0.5"
+tonic-ws-transport = { path = "../transport", default-features = false, features = ["web"] }
+
+[dev-dependencies]
+env_logger = "0.9"
+
+[build-dependencies]
+tonic-build = { version = "0.5", features = ["prost"] }

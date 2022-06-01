@@ -1,11 +1,17 @@
-pub mod crdt;
-pub mod wasm;
+pub mod block;
+pub mod block_store;
+pub mod doc;
+pub mod list;
+pub mod sync_txn;
+pub mod txn_rpc;
+pub mod utils;
+pub mod zk_conn;
 
 #[cfg(test)]
 mod local_tests {
-    use crate::crdt::block::Content;
-    use crate::crdt::doc::Doc;
-    use crate::crdt::utils::ClientID;
+    use crate::block::Content;
+    use crate::doc::Doc;
+    use crate::utils::ClientID;
 
     // Local insert to a single doc (one letter at a time),
     // there is no need to use transaction if no sync is needed
@@ -191,9 +197,9 @@ mod local_tests {
         use std::collections::HashMap;
         use std::sync::Arc;
 
-        use crate::crdt::doc::Doc;
-        use crate::crdt::sync_txn::SyncTransaction;
-        use crate::crdt::utils::{serve_rpc, ClientID};
+        use crate::doc::Doc;
+        use crate::sync_txn::SyncTransaction;
+        use crate::utils::{serve_rpc, ClientID};
         use std::{thread, time};
         use tokio::sync::mpsc::channel;
         use tokio::sync::mpsc::{Receiver, Sender};
@@ -368,11 +374,11 @@ mod local_tests {
 
 #[cfg(test)]
 mod remote_test {
-    use crate::crdt::block::Block;
-    use crate::crdt::block::BlockID;
-    use crate::crdt::block::Content;
-    use crate::crdt::doc::Doc;
-    use crate::crdt::utils::ClientID;
+    use crate::block::Block;
+    use crate::block::BlockID;
+    use crate::block::Content;
+    use crate::doc::Doc;
+    use crate::utils::ClientID;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn remote_insert_None() {

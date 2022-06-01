@@ -2,9 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::net::ToSocketAddrs;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
-use crate::crdt::{
-    block::Block, sync_txn::SyncTransaction, txn_rpc::txn_service_server::TxnServiceServer,
-};
+use crate::txn_rpc::txn_service_server::TxnServiceServer;
+use crate::{block::Block, sync_txn::SyncTransaction};
 use std::{error::Error, fmt::Display};
 
 pub type CRDTResult<T> = Result<T, Box<(dyn Error + Send + Sync)>>;
@@ -50,6 +49,7 @@ pub async fn serve_rpc(
     mut receiver: Receiver<()>,
     sender: Sender<()>,
 ) {
+    println!("[crdt] starting crdt rpc server");
     let ip = txn.client_ip.clone();
     let doc_name = txn.doc_name.clone();
     let (sender_r, mut receiver_r): (Sender<()>, Receiver<()>) = channel(1);
@@ -66,17 +66,17 @@ pub async fn serve_rpc(
     if let Some(resolved_addr) = resolved_addr_res {
         let res = server
             .serve_with_shutdown(resolved_addr, async move {
-                println!("started rpc at {:?}", resolved_addr);
+                println!("[crdt] started rpc at {:?}", resolved_addr);
                 let _ = sender_r.send(()).await;
                 receiver.recv().await;
-                println!("successfully shut down txn rpc service");
+                println!("[crdt] successfully shut down txn rpc service");
             })
             .await;
         if let Err(e) = res {
-            println!("failed to start rpc service {:?}", e);
+            println!("[crdt] failed to start rpc service {:?}", e);
         }
     } else {
-        println!("cannot resolve ip address");
+        println!("[crdt] cannot resolve ip address");
     }
-    // handle.await.expect("this task being joined has panicked")
+    println!("[crdt] shutdown");
 }

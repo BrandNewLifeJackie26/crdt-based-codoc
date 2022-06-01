@@ -22,7 +22,7 @@ pub struct Status {
 }
 #[doc = r" Generated client implementations."]
 pub mod txn_service_client {
-    #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
+    #![allow(unused_variables, dead_code, missing_docs)]
     use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct TxnServiceClient<T> {
@@ -42,7 +42,7 @@ pub mod txn_service_client {
     impl<T> TxnServiceClient<T>
     where
         T: tonic::client::GrpcService<tonic::body::BoxBody>,
-        T::ResponseBody: Body + Send + 'static,
+        T::ResponseBody: Body + Send + Sync + 'static,
         T::Error: Into<StdError>,
         <T::ResponseBody as Body>::Error: Into<StdError> + Send,
     {
@@ -55,14 +55,14 @@ pub mod txn_service_client {
             interceptor: F,
         ) -> TxnServiceClient<InterceptedService<T, F>>
         where
-            F: tonic::service::Interceptor,
-            T: tonic::codegen::Service<
+            F: FnMut(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status>,
+            T: Service<
                 http::Request<tonic::body::BoxBody>,
                 Response = http::Response<
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
+            <T as Service<http::Request<tonic::body::BoxBody>>>::Error:
                 Into<StdError> + Send + Sync,
         {
             TxnServiceClient::new(InterceptedService::new(inner, interceptor))
@@ -113,7 +113,7 @@ pub mod txn_service_client {
 }
 #[doc = r" Generated server implementations."]
 pub mod txn_service_server {
-    #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
+    #![allow(unused_variables, dead_code, missing_docs)]
     use tonic::codegen::*;
     #[doc = "Generated trait containing gRPC methods that should be implemented for use with TxnServiceServer."]
     #[async_trait]
@@ -146,15 +146,15 @@ pub mod txn_service_server {
         }
         pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
         where
-            F: tonic::service::Interceptor,
+            F: FnMut(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status>,
         {
             InterceptedService::new(Self::new(inner), interceptor)
         }
     }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for TxnServiceServer<T>
+    impl<T, B> Service<http::Request<B>> for TxnServiceServer<T>
     where
         T: TxnService,
-        B: Body + Send + 'static,
+        B: Body + Send + Sync + 'static,
         B::Error: Into<StdError> + Send + 'static,
     {
         type Response = http::Response<tonic::body::BoxBody>;

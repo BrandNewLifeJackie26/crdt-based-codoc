@@ -1,5 +1,5 @@
-use crate::crdt::utils::{ClientID, Peer, Updates};
-use crate::crdt::{block::Content, block_store::BlockStore, Block, BlockID};
+use crate::utils::{ClientID, Peer, Updates};
+use crate::{block::Block, block::BlockID, block::Content, block_store::BlockStore};
 use std::cmp::min;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -8,7 +8,6 @@ use tokio::sync::Mutex;
 // it is used during synchronization to find the missing changes
 
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::convert::FromWasmAbi;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VectorClock {
     pub clock_map: HashMap<ClientID, u32>,
