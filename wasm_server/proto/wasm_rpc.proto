@@ -19,7 +19,7 @@ message insertRequest {
 message deleteRequest {
     uint32 client_id = 1;
     uint32 pos = 2;
-    string updates = 3;
+    uint32 len = 3;
 }
 
 message endRequest {
@@ -30,9 +30,18 @@ message response {
     bool succ = 1;
 }
 
+message getStringRequest {
+    uint32 client_id = 1;
+}
+
+message getStringResponse {
+    string entire_doc = 1;
+}
+
 service WasmService {
     rpc register(registerRequest) returns (response);
     rpc insert(insertRequest) returns (response);
     rpc delete(deleteRequest) returns (response);
+    rpc get_string(getStringRequest) returns (getStringResponse);
     rpc end(endRequest) returns (response);
 }

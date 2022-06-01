@@ -1,4 +1,5 @@
 use core::time;
+use crdt::block::Content;
 use crdt::doc::Doc;
 use crdt::sync_txn::SyncTransaction;
 use crdt::utils::{serve_rpc, ClientID};
@@ -9,11 +10,12 @@ use std::thread;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::Server;
 use tonic_ws_transport::WsConnection;
 use wasm_rpc::wasm_service_server::{WasmService, WasmServiceServer};
- 
+
 pub mod wasm_rpc {
     include!("wasm_rpc.rs");
 }
@@ -35,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let wasm_server = WasmRpcServer {
-        txn_service: Mutex::new(HashMap::new()),
+        txn_service: RwLock::new(HashMap::new()),
         rpc_shutdown_sender: Mutex::new(HashMap::new()),
     };
 
@@ -50,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub struct WasmRpcServer {
-    txn_service: Mutex<HashMap<u32, SyncTransaction>>,
+    txn_service: RwLock<HashMap<u32, SyncTransaction>>,
     rpc_shutdown_sender: Mutex<HashMap<u32, Sender<()>>>,
 }
 
@@ -101,18 +103,22 @@ impl WasmService for WasmRpcServer {
         let client_ip = temp_request.client_ip;
         let doc_name = temp_request.doc_name;
 
-        let doc = Arc::new(Mutex::new(Doc::new(doc_name.to_string(), client_id.clone())));
+        let doc = Arc::new(Mutex::new(Doc::new(
+            doc_name.to_string(),
+            client_id.clone(),
+        )));
         let (sender, receiver): (Sender<()>, Receiver<()>) = channel(1);
         let (init_sender, mut init_receiver): (Sender<()>, Receiver<()>) = channel(1);
 
-        let (txn_service, txn_rpc, txn_bg) = self.start_helper(doc_name, client_id.clone(), client_ip.clone(), doc);
+        let (txn_service, txn_rpc, txn_bg) =
+            self.start_helper(doc_name, client_id.clone(), client_ip.clone(), doc);
         tokio::spawn(async move {
             serve_rpc(txn_rpc, txn_bg, receiver, init_sender).await;
         });
         let _ = init_receiver.recv().await;
         println!("[wasm] crdt rpc service started");
 
-        let mut temp1 = self.txn_service.lock().await;
+        let mut temp1 = self.txn_service.write().await;
         temp1.insert(client_id.clone(), txn_service);
         let mut temp2 = self.rpc_shutdown_sender.lock().await;
         temp2.insert(client_id.clone(), sender);
@@ -132,14 +138,63 @@ impl WasmService for WasmRpcServer {
         &self,
         request: tonic::Request<wasm_rpc::InsertRequest>,
     ) -> Result<tonic::Response<wasm_rpc::Response>, tonic::Status> {
-        todo!()
+        println!("[wasm] crdt insert request received");
+        let temp_request = request.into_inner();
+        let client_id = temp_request.client_id;
+        let pos = temp_request.pos;
+        let content_str = temp_request.updates;
+
+        let temp = self.txn_service.read().await;
+        let service = temp.get(&client_id.clone());
+        if let Some(service) = service.clone() {
+            let mut doc = service.doc.lock().await;
+            doc.insert_local(
+                Content {
+                    content: content_str,
+                },
+                pos,
+            )
+            .await;
+        }
+        return Ok(tonic::Response::new(wasm_rpc::Response { succ: true }));
     }
 
     async fn delete(
         &self,
         request: tonic::Request<wasm_rpc::DeleteRequest>,
     ) -> Result<tonic::Response<wasm_rpc::Response>, tonic::Status> {
-        todo!()
+        println!("[wasm] crdt delete request received");
+        let temp_request = request.into_inner();
+        let client_id = temp_request.client_id;
+        let pos = temp_request.pos;
+        let len = temp_request.len;
+
+        let temp = self.txn_service.read().await;
+        let service = temp.get(&client_id.clone());
+        if let Some(service) = service {
+            let mut doc = service.doc.lock().await;
+            doc.delete_local(pos, len).await;
+        }
+        return Ok(tonic::Response::new(wasm_rpc::Response { succ: true }));
+    }
+
+    async fn get_string(
+        &self,
+        request: tonic::Request<wasm_rpc::GetStringRequest>,
+    ) -> Result<tonic::Response<wasm_rpc::GetStringResponse>, tonic::Status> {
+        println!("[wasm] crdt get current content request received");
+        let temp_request = request.into_inner();
+        let client_id = temp_request.client_id;
+
+        let temp = self.txn_service.read().await;
+        let service = temp.get(&client_id.clone());
+        let mut res = String::new();
+        if let Some(service) = service {
+            res = service.get_content().await;
+        }
+        return Ok(tonic::Response::new(wasm_rpc::GetStringResponse {
+            entire_doc: res,
+        }));
     }
 
     async fn end(

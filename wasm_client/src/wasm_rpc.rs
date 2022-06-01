@@ -22,8 +22,8 @@ pub struct DeleteRequest {
     pub client_id: u32,
     #[prost(uint32, tag = "2")]
     pub pos: u32,
-    #[prost(string, tag = "3")]
-    pub updates: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "3")]
+    pub len: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EndRequest {
@@ -34,6 +34,16 @@ pub struct EndRequest {
 pub struct Response {
     #[prost(bool, tag = "1")]
     pub succ: bool,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetStringRequest {
+    #[prost(uint32, tag = "1")]
+    pub client_id: u32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetStringResponse {
+    #[prost(string, tag = "1")]
+    pub entire_doc: ::prost::alloc::string::String,
 }
 #[doc = r" Generated client implementations."]
 pub mod wasm_service_client {
@@ -126,6 +136,20 @@ pub mod wasm_service_client {
             let path = http::uri::PathAndQuery::from_static("/wasm_rpc.WasmService/delete");
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn get_string(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetStringRequest>,
+        ) -> Result<tonic::Response<super::GetStringResponse>, tonic::Status> {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/wasm_rpc.WasmService/get_string");
+            self.inner.unary(request.into_request(), path, codec).await
+        }
         pub async fn end(
             &mut self,
             request: impl tonic::IntoRequest<super::EndRequest>,
@@ -161,6 +185,10 @@ pub mod wasm_service_server {
             &self,
             request: tonic::Request<super::DeleteRequest>,
         ) -> Result<tonic::Response<super::Response>, tonic::Status>;
+        async fn get_string(
+            &self,
+            request: tonic::Request<super::GetStringRequest>,
+        ) -> Result<tonic::Response<super::GetStringResponse>, tonic::Status>;
         async fn end(
             &self,
             request: tonic::Request<super::EndRequest>,
@@ -288,6 +316,37 @@ pub mod wasm_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = deleteSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec).apply_compression_config(
+                            accept_compression_encodings,
+                            send_compression_encodings,
+                        );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/wasm_rpc.WasmService/get_string" => {
+                    #[allow(non_camel_case_types)]
+                    struct get_stringSvc<T: WasmService>(pub Arc<T>);
+                    impl<T: WasmService> tonic::server::UnaryService<super::GetStringRequest> for get_stringSvc<T> {
+                        type Response = super::GetStringResponse;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetStringRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { (*inner).get_string(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = get_stringSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec).apply_compression_config(
                             accept_compression_encodings,
