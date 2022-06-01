@@ -178,12 +178,11 @@ impl BlockStore {
             middle += 1;
         }
 
-        let (middle_id, mut middle_content, middle_left_origin, middle_right_origin) = {
+        let (middle_id, mut middle_content, middle_right_origin) = {
             let middle_lock = self.total_store.list[middle].lock().await;
             (
                 block_id,
                 middle_lock.content.content.clone(),
-                middle_lock.left_origin.clone(),
                 middle_lock.right_origin.clone(),
             )
         };
@@ -303,91 +302,6 @@ impl BlockStore {
             // Remove the right block from states
             self.remove_state(right_id).await;
         }
-
-        // The following codes can be used to find all possible merges
-        // let mut start = 0;
-        // while start < self.total_store.list.len() {
-        //     let (start_id, left_origin, mut content, deleted) = {
-        //         let start_lock = self.total_store.list[start].lock().await;
-        //         (
-        //             start_lock.id.clone(),
-        //             start_lock.left_origin.clone(),
-        //             start_lock.content.content.clone(),
-        //             start_lock.is_deleted,
-        //         )
-        //     };
-        //     let mut right_origin: Option<BlockID> = None;
-
-        //     if start_id.client != client
-        //         || deleted
-        //         || (!no_sync && start_id.clock <= latest_clock.unwrap())
-        //     {
-        //         start += 1;
-        //         continue;
-        //     };
-
-        //     let mut end = start;
-        //     while end + 1 < self.total_store.list.len() {
-        //         let (curr_id, curr_content) = {
-        //             let curr_lock = self.total_store.list[end].lock().await;
-        //             (curr_lock.id.clone(), curr_lock.content.clone())
-        //         };
-        //         let (next_id, next_content, next_right_origin, next_deleted) = {
-        //             let next_lock = self.total_store.list[end + 1].lock().await;
-        //             (
-        //                 next_lock.id.clone(),
-        //                 next_lock.content.content.clone(),
-        //                 next_lock.right_origin.clone(),
-        //                 next_lock.is_deleted,
-        //             )
-        //         };
-
-        //         if curr_id.client != next_id.client || next_deleted {
-        //             break;
-        //         }
-
-        //         // Check if it is caused by split
-        //         if curr_id.clock + curr_content.content.len() as u32 != next_id.clock {
-        //             if end + 2 >= self.total_store.list.len() {
-        //                 break;
-        //             }
-
-        //             let (next_id, next_content, next_right_origin, next_deleted) = {
-        //                 let next_lock = self.total_store.list[end + 1].lock().await;
-        //                 (
-        //                     next_lock.id.clone(),
-        //                     next_lock.content.content.clone(),
-        //                     next_lock.right_origin.clone(),
-        //                     next_lock.is_deleted,
-        //                 )
-        //             };
-        //         }
-
-        //         content.push_str(&next_content);
-        //         right_origin = next_right_origin;
-        //         end += 1;
-        //     }
-
-        //     // Squash all blocks between start and end (inclusively)
-        //     // TODO: worst time complexity O(N^2) since it is not doubly linked list
-        //     if end > start {
-        //         let new_block = Block {
-        //             id: start_id,
-        //             left_origin,
-        //             right_origin,
-        //             is_deleted: false,
-        //             content: Content { content },
-        //         };
-
-        //         // TODO: remove the squashed blocks
-        //         for i in start..=end {
-        //             // self.remove_status(self.total_store.list[i])
-        //         }
-        //         self.total_store.list.drain(start..=end);
-        //     }
-
-        //     start = end + 1;
-        // }
     }
 
     // Form a string by connecting all elements in the current BlockList
