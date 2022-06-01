@@ -49,6 +49,7 @@ pub struct Doc {
     pub pending_updates: Updates,
     // TODO: states: vector clock, pending updates, delete set, etc.
     pub vector_clock: VectorClock,
+    pub latest_clock: Arc<Mutex<Option<u32>>>, // Largest clock that has been synchronized
 }
 
 impl Doc {
@@ -62,6 +63,7 @@ impl Doc {
             vector_clock: VectorClock {
                 clock_map: HashMap::new(),
             },
+            latest_clock: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -297,6 +299,7 @@ impl Doc {
             is_deleted: false,
             content: content.clone(),
         };
+        let new_block_id = new_block.id.clone();
 
         // TODO:
         let (left_id, left_content) = {
@@ -352,6 +355,10 @@ impl Doc {
                 .await;
             store_lock.insert(new_block, left_id).await;
         }
+
+        // Squash neighboring blocks
+        let latest_clock = self.latest_clock.lock().await;
+        store_lock.squash(new_block_id, *latest_clock).await;
 
         // Update vector clock
         self.vector_clock.increment(self.client);

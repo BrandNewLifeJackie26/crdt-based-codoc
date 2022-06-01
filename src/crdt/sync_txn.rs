@@ -225,9 +225,21 @@ impl TxnService for SyncTransaction {
                 let updates_serialized = serde_json::to_string(&updates);
                 match updates_serialized {
                     Ok(updates_serialized) => {
+                        // Update current latest clock
+                        let doc_lock = self.doc.lock().await;
+                        let store_lock = doc_lock.block_store.lock().await;
+                        let last_block_lock = store_lock.kv_store[&self.client]
+                            .list
+                            .last()
+                            .unwrap()
+                            .lock()
+                            .await;
+                        let mut latest_clock_lock = doc_lock.latest_clock.lock().await;
+                        *latest_clock_lock = Some(last_block_lock.id.clock);
+
                         return Ok(tonic::Response::new(txn_rpc::PullResponse {
                             updates: updates_serialized,
-                        }))
+                        }));
                     }
                     Err(_) => return Err(tonic::Status::invalid_argument("serialized rpc error")),
                 }
