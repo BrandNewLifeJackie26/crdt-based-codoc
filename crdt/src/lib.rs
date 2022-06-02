@@ -58,6 +58,40 @@ mod local_tests {
         assert_eq!(doc.to_string().await, "1423".to_string());
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_insert_in_between() {
+        let cid = 1 as ClientID;
+        let mut doc = Doc::new("text".to_string(), cid);
+
+        doc.insert_local(
+            Content {
+                content: "a".to_string(),
+            },
+            0,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "a".to_string());
+
+        doc.insert_local(
+            Content {
+                content: "b".to_string(),
+            },
+            1,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "ab".to_string());
+
+        // Insert pos is larger than length
+        doc.insert_local(
+            Content {
+                content: "1".to_string(),
+            },
+            1,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "a1b".to_string());
+    }
+
     // Local insert to a single doc, (may insert more than one letter at a time)
     // there is no need to use transaction if no sync is needed
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -101,6 +135,30 @@ mod local_tests {
         )
         .await;
         assert_eq!(doc.to_string().await, "145278936".to_string());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_insert_at_begin() {
+        let cid = 1 as ClientID;
+        let mut doc = Doc::new("text".to_string(), cid);
+
+        doc.insert_local(
+            Content {
+                content: "1".to_string(),
+            },
+            0,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "1".to_string());
+
+        doc.insert_local(
+            Content {
+                content: "2".to_string(),
+            },
+            0,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "21".to_string());
     }
 
     // Local insert and delete the whole string
@@ -190,6 +248,43 @@ mod local_tests {
         // Delete part of a block from the start
         doc.delete_local(2, 2).await;
         assert_eq!(doc.to_string().await, "1256".to_string());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_delete_across_blocks_hard() {
+        let cid = 1 as ClientID;
+        let mut doc = Doc::new("text".to_string(), cid);
+
+        doc.insert_local(
+            Content {
+                content: "123456".to_string(),
+            },
+            0,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "123456".to_string());
+
+        doc.insert_local(
+            Content {
+                content: "aabbcc".to_string(),
+            },
+            0,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "aabbcc123456".to_string());
+
+        doc.insert_local(
+            Content {
+                content: "AABBDD".to_string(),
+            },
+            1,
+        )
+        .await;
+        assert_eq!(doc.to_string().await, "aAABBDDabbcc123456".to_string());
+
+        // Delete part of a block from the start
+        doc.delete_local(0, 14).await;
+        assert_eq!(doc.to_string().await, "3456".to_string());
     }
 
     #[cfg(test)]

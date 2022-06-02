@@ -138,12 +138,14 @@ impl WasmService for WasmRpcServer {
         &self,
         request: tonic::Request<wasm_rpc::InsertRequest>,
     ) -> Result<tonic::Response<wasm_rpc::Response>, tonic::Status> {
-        println!("[wasm] crdt insert request received");
         let temp_request = request.into_inner();
         let client_id = temp_request.client_id;
         let pos = temp_request.pos;
         let content_str = temp_request.updates;
-
+        println!(
+            "[wasm] crdt insert request received {:?} at {:?}",
+            content_str, pos
+        );
         let temp = self.txn_service.read().await;
         let service = temp.get(&client_id.clone());
         if let Some(service) = service.clone() {
@@ -163,11 +165,14 @@ impl WasmService for WasmRpcServer {
         &self,
         request: tonic::Request<wasm_rpc::DeleteRequest>,
     ) -> Result<tonic::Response<wasm_rpc::Response>, tonic::Status> {
-        println!("[wasm] crdt delete request received");
         let temp_request = request.into_inner();
         let client_id = temp_request.client_id;
         let pos = temp_request.pos;
         let len = temp_request.len;
+        println!(
+            "[wasm] crdt delete request received, pos={:?}, len={:?}",
+            pos, len
+        );
 
         let temp = self.txn_service.read().await;
         let service = temp.get(&client_id.clone());

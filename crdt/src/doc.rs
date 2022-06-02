@@ -252,6 +252,7 @@ impl Doc {
     // Insert the content into pos in BlockStore
     // TODO: Arc<Mutex<BlockList>>
     pub async fn insert_local(&mut self, content: Content, pos: u32) {
+        println!("INsert - local");
         let store = self.block_store.clone();
         let mut store_lock = store.lock().await;
 
@@ -301,9 +302,9 @@ impl Doc {
         let (left_id, left_content) = {
             if idx > 0 {
                 let left_lock = store_lock.total_store.list[idx - 1].lock().await;
-                (left_lock.id.clone(), left_lock.content.clone())
+                (Some(left_lock.id.clone()), left_lock.content.clone())
             } else {
-                (BlockID::default(), Content::default()) // INVALID
+                (None, Content::default()) // INVALID
             }
         };
         let curr_id = {
@@ -320,7 +321,6 @@ impl Doc {
         {
             // Append to the end
             if idx > 0 {
-                let left_id = Some(left_id);
                 new_block.left_origin = left_id.clone();
                 store_lock.insert(new_block, left_id).await;
             } else {
@@ -328,13 +328,11 @@ impl Doc {
             }
         } else if prev_char_cnt == pos {
             // Insert to i-th position in total_store
-            let left_id = Some(left_id);
             new_block.left_origin = left_id.clone();
             new_block.right_origin = Some(curr_id);
             store_lock.insert(new_block, left_id).await;
         } else {
             // Have to split total_store[i-1]
-            let left_id = Some(left_id);
             let left_content_len = left_content.content.len() as u32;
             new_block.left_origin = left_id.clone();
             new_block.right_origin = Some(BlockID::new(
@@ -398,73 +396,77 @@ impl Doc {
         // Find the correct blocks to delete
         // The block may need to be splitted
         // TODO: empty doc -> raise error
-        let mut i_start = 0 as usize;
-        let mut curr_start = -1;
+        let mut left_idx = 0 as usize;
+        let mut pos_limit_left = -1;
 
         loop {
-            if i_start >= store_lock.total_store.list.len() {
+            if left_idx >= store_lock.total_store.list.len() {
                 break;
             }
 
             // TODO: what if pos < curr_left and the loop already break?
             let (curr_is_deleted, curr_content) = {
-                let curr_lock = store_lock.total_store.list[i_start].lock().await;
+                let curr_lock = store_lock.total_store.list[left_idx].lock().await;
                 (curr_lock.is_deleted, curr_lock.content.clone())
             };
 
             if !curr_is_deleted {
-                curr_start += curr_content.content.len() as i32;
+                pos_limit_left += curr_content.content.len() as i32;
             }
-            if curr_start < pos as i32 {
-                i_start += 1;
+            if pos_limit_left < pos as i32 {
+                left_idx += 1;
             } else {
                 break;
             }
         }
-        // println!("-------Current start is : {:?}", i_start);
+        println!("-------Current start is : {:?}", left_idx);
 
-        let mut i_end = i_start;
-        let mut curr_end = curr_start;
-        let pos_end = min(pos + len - 1, doc_len - 1);
+        let mut right_idx = left_idx;
+        let pos_end = pos + len - 1;
+        let mut pos_limit_right = pos_limit_left.clone();
         loop {
-            if i_end >= store_lock.total_store.list.len() {
+            if pos_limit_right < pos_end as i32 {
+                right_idx += 1;
+            } else {
                 break;
+            }
+
+            if right_idx >= store_lock.total_store.list.len() {
+                return;
             }
 
             let (curr_is_deleted, curr_content) = {
-                let curr_lock = store_lock.total_store.list[i_end].lock().await;
+                let curr_lock = store_lock.total_store.list[right_idx].lock().await;
                 (curr_lock.is_deleted, curr_lock.content.clone())
             };
 
-            if curr_end < pos_end as i32 {
-                i_end += 1;
-            } else {
-                break;
-            }
             if !curr_is_deleted {
-                curr_end += curr_content.content.len() as i32;
+                pos_limit_right += curr_content.content.len() as i32;
             }
         }
-        // println!("-------Current end is : {:?}", i_end);
+        println!("-------Current end is : {:?}", right_idx);
+        {
+            println!("-------total_list is : {:?}", store_lock.total_store.list)
+        }
 
-        // Delete all blocks in (i_start, i_end) directly
-        // Delete i_start and i_end according to the position
+        // Delete all blocks in (left_idx, right_idx) directly
+        // Delete part or all left_idx and right_idx
         let (start_id, start_content) = {
-            let start_lock = store_lock.total_store.list[i_start].lock().await;
+            let start_lock = store_lock.total_store.list[left_idx].lock().await;
             (start_lock.id.clone(), start_lock.content.clone())
         };
         let (end_id, end_content) = {
-            let end_lock = store_lock.total_store.list[i_end].lock().await;
+            let end_lock = store_lock.total_store.list[right_idx].lock().await;
             (end_lock.id.clone(), end_lock.content.clone())
         };
 
-        if i_start == i_end {
+        if left_idx == right_idx {
             // All texts to be deleted are in the same block
             let block_id = start_id.clone();
             let length = start_content.content.len() as u32;
             // split into three Blocks
             // the middle one will be deleted
-            let left_length = length - (curr_start as u32 - pos + 1); // TODO: ?
+            let left_length = length - (pos_limit_left as u32 - pos + 1); // TODO: ?
             let new_block_id;
             if left_length != 0 {
                 store_lock.split(block_id.clone(), left_length).await;
@@ -478,7 +480,7 @@ impl Doc {
             // println!("----- Block id: {:?}", block_id);
             // println!("----- NEW Block id: {:?}", new_blockID);
 
-            if pos_end as i32 == curr_start {
+            if pos_end as i32 == pos_limit_right {
                 store_lock.delete(new_block_id).await;
             } else {
                 let mid_length = len;
@@ -487,8 +489,8 @@ impl Doc {
             }
         } else {
             // Delete all blocks in between
-            let i = i_start + 1;
-            while i < i_end {
+            let mut i = left_idx + 1;
+            while i < right_idx {
                 let curr_id = {
                     let curr_lock = store_lock.total_store.list[i].lock().await;
                     curr_lock.id.clone()
@@ -496,32 +498,31 @@ impl Doc {
 
                 let block_id = curr_id.clone();
                 store_lock.delete(block_id).await;
+                i += 1;
             }
 
             // Delete left blocks
-            let length_start = start_content.content.len() as u32;
-            let block_id_start = start_id.clone();
-            let left_length = length_start - (curr_start as u32 - pos + 1);
-            let new_block_id;
+            let blk_len = start_content.content.len() as u32;
+            let blk_id = start_id.clone();
+            let left_length = blk_len - (pos_limit_left as u32 - pos + 1);
+            let blk_id_to_del;
             if left_length != 0 {
-                store_lock.split(block_id_start.clone(), left_length).await;
-                new_block_id = BlockID::new(
-                    block_id_start.client.clone(),
-                    block_id_start.clock.clone() + left_length,
-                );
+                store_lock.split(blk_id.clone(), left_length).await;
+                blk_id_to_del =
+                    BlockID::new(blk_id.client.clone(), blk_id.clock.clone() + left_length);
             } else {
-                new_block_id = block_id_start.clone();
+                blk_id_to_del = blk_id.clone();
             }
-            store_lock.delete(new_block_id).await;
+            store_lock.delete(blk_id_to_del).await;
 
             // Delete right blocks
-            let length_end = end_content.content.len() as u32;
-            let block_id_end = end_id.clone();
-            let right_length = length_end - (curr_end as u32 - pos_end);
-            if curr_end != pos_end as i32 {
-                store_lock.split(block_id_end.clone(), right_length).await;
+            let blk_len = end_content.content.len() as u32;
+            let blk_id = end_id.clone();
+            let right_length = blk_len - (pos_limit_right as u32 - pos_end);
+            if pos_limit_right != pos_end as i32 {
+                store_lock.split(blk_id.clone(), right_length).await;
             }
-            store_lock.delete(block_id_end).await;
+            store_lock.delete(blk_id).await;
         }
 
         // Update vector clock
