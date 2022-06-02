@@ -48,6 +48,8 @@ impl SyncTransaction {
     }
 
     pub async fn get_content(&self) -> String {
+        self.sync().await;
+
         let doc = self.doc.lock().await;
         doc.to_string().await
     }
@@ -56,6 +58,7 @@ impl SyncTransaction {
     // resolve all conflicts
     pub async fn sync(&self) {
         // get all the peers that are editing the same doc
+        println!("[sync_txn] {:?} start syncing...", self.client);
         let mut real_channel = self.channels.lock().await;
         let peers;
         {
@@ -65,7 +68,7 @@ impl SyncTransaction {
 
         // for all peers call on rpc to get all updates
         for client in peers.into_iter() {
-            if client.client_id == client.client_id {
+            if client.client_id == self.client {
                 continue;
             }
             // if connection already established, reuse the connection
@@ -107,18 +110,25 @@ impl SyncTransaction {
                                     serde_json::from_str(&value.into_inner().updates);
                                 match remote_updates {
                                     Ok(remote_updates) => {
+                                        println!(
+                                            "[sync_txn_sync] {:?} successfully get all updates",
+                                            self.client
+                                        );
                                         self.update_remote(remote_updates).await;
                                     }
-                                    Err(_) => println!("serde deserialization error"),
+                                    Err(_) => {
+                                        println!("[sync_txn_sync] serde deserialization error")
+                                    }
                                 }
                             }
-                            Err(_) => println!("rpc error"),
+                            Err(_) => println!("[sync_txn_sync] rpc error"),
                         };
                     }
-                    Err(_) => println!("serde serialization error"),
+                    Err(_) => println!("[sync_txn_sync] serde serialization error"),
                 }
             }
         }
+        println!("[sync_txn] {:?} sync fin", self.client);
     }
 
     // update peers' modifications on local copy
@@ -147,6 +157,14 @@ impl SyncTransaction {
         {
             let local_doc = self.doc.lock().await;
             local_clocks = local_doc.vector_clock.clone();
+            println!(
+                "[sync_txn_cf] {:?} local clock is {:?}",
+                self.client, local_clocks
+            );
+            println!(
+                "[sync_txn_cf] {:?} remote clock is {:?}",
+                self.client, remote_clocks
+            );
         }
         let mut res: Updates = vec![];
 
@@ -167,6 +185,10 @@ impl SyncTransaction {
             }
         }
 
+        println!(
+            "[sync_txn_compute_diff] {:?} successfully computed all diffs",
+            self.client
+        );
         return res;
     }
 
@@ -174,6 +196,10 @@ impl SyncTransaction {
     // need to send to the counterpart
     async fn construct_updates(&self, start: u32, client: ClientID) -> Updates {
         // go to block store and get the updates
+        println!(
+            "[sync_txn_cu] {:?} for {:?} start from {:?}",
+            self.client, client, start
+        );
         let local_doc = self.doc.lock().await;
         let block_store = local_doc.block_store.lock().await;
         let list = block_store.kv_store.get(&client).clone();
@@ -199,17 +225,32 @@ impl SyncTransaction {
                 // should not happen
             }
         }
+        println!("[sync_txn_cu] {:?} succ", self.client);
         return res;
     }
 
     // consult zookeeper and sync with other peers when started
     pub async fn register(&self) -> bool {
         let reg_res = self.zk.register(self.doc_name.clone(), self.client).await;
-        if let Err(e) = reg_res {
-            println!("{:?} register user failed because of {:?}", self.client, e);
-            return false;
+
+        match reg_res {
+            Err(e) => {
+                println!(
+                    "[sync_txn_register] {:?} register user failed because of {:?}",
+                    self.client, e
+                );
+                return false;
+            }
+            Ok(res) => {
+                let mut temp = self.doc.lock().await;
+                temp.peers = res;
+                println!(
+                    "[sync_txn_register]{:?} successfully received up-to-dated peer list {:?}",
+                    self.client, temp.peers
+                );
+                return true;
+            }
         }
-        true
     }
 }
 
@@ -234,10 +275,18 @@ impl TxnService for SyncTransaction {
                             updates: updates_serialized,
                         }))
                     }
-                    Err(_) => return Err(tonic::Status::invalid_argument("serialized rpc error")),
+                    Err(_) => {
+                        return Err(tonic::Status::invalid_argument(
+                            "[sync_txn] serialized rpc error",
+                        ))
+                    }
                 }
             }
-            Err(_) => return Err(tonic::Status::invalid_argument("deserialized rpc error")),
+            Err(_) => {
+                return Err(tonic::Status::invalid_argument(
+                    "[sync_txn] deserialized rpc error",
+                ))
+            }
         }
     }
 
@@ -245,13 +294,16 @@ impl TxnService for SyncTransaction {
         &self,
         request: tonic::Request<txn_rpc::RegisterRequest>,
     ) -> Result<tonic::Response<txn_rpc::Status>, tonic::Status> {
-        println!("{:?} received new node added notification", self.client);
+        println!(
+            "[sync_txn] {:?} received new node added notification",
+            self.client
+        );
         let temp_request = request.into_inner();
         let peers_remote_res: Result<Vec<Peer>, serde_json::Error> =
             serde_json::from_str(&temp_request.peer_list);
         if let Ok(peers_remote) = peers_remote_res {
             println!(
-                "{:?} successfully received up-to-dated peer list {:?}",
+                "[sync_txn] {:?} successfully received up-to-dated peer list {:?}",
                 self.client, peers_remote
             );
             let mut local_doc = self.doc.lock().await;

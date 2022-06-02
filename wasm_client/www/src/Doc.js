@@ -55,7 +55,7 @@ function Doc() {
                     )
                     .forEach((change) => {
                         // Operation here
-                        wasm.delete_update(id, change.rangeOffset, change.rangeLength);
+                        // wasm.delete_update(id, change.rangeOffset, change.rangeLength);
                         wasm.insert_update(id, change.rangeOffset, change.text);
                         setCode(wasm.to_string(id));
                         console.log('CHANGE: ', change);

@@ -29,11 +29,11 @@ impl RegisterWatcher {
             });
             let resp = client.sync_peer_list(req).await;
             match resp {
-                Ok(_) => println!("successfully send new user to peer's list"),
-                Err(e) => println!("failed to send new user to peer's list {:?}", e),
+                Ok(_) => println!("[zk] successfully send new user to peer's list"),
+                Err(e) => println!("[zk] failed to send new user to peer's list {:?}", e),
             }
         } else {
-            println!("watcher failed to serialize peer list");
+            println!("[zk] watcher failed to serialize peer list");
         }
     }
 }
@@ -168,7 +168,7 @@ impl ZooKeeperConnection {
     }
 
     // add a user for a doc
-    pub async fn register(&self, doc: String, client: ClientID) -> CRDTResult<()> {
+    pub async fn register(&self, doc: String, client: ClientID) -> CRDTResult<Vec<Peer>> {
         let zk = ZooKeeper::connect(&*ZK_ADDR, Duration::from_secs(15), DefaultWatcher);
 
         match zk {
@@ -187,7 +187,29 @@ impl ZooKeeperConnection {
                 match res {
                     Ok(_) => {
                         println!("[zk] successfully created node for this client");
-                        return Ok(());
+                        let path = format!("/{}", doc);
+                        let watch_res = zk.get_children(&path[..], false);
+                        if let Ok(full_peer_list) = watch_res {
+                            let mut peers_remote = vec![];
+                            for peer in full_peer_list {
+                                let peer_id = peer.parse::<u32>();
+                                match peer_id {
+                                    Ok(peer_id) => {
+                                        let child_path = format!("{}/{}", path, peer);
+                                        let ip_addr_res = zk.get_data(&child_path[..], false);
+                                        if let Ok(ip_addr) = ip_addr_res {
+                                            peers_remote.push(Peer {
+                                                client_id: peer_id,
+                                                ip_addr: String::from_utf8(ip_addr.0.clone())
+                                                    .unwrap(),
+                                            });
+                                        }
+                                    }
+                                    Err(_) => println!("invalid client id"),
+                                }
+                            }
+                            return Ok(peers_remote);
+                        }
                     }
                     Err(e) => {
                         println!("[zk] cannot create node for this client because {:?}", e);

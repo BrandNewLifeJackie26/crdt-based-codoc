@@ -138,7 +138,7 @@ impl WasmService for WasmRpcServer {
         &self,
         request: tonic::Request<wasm_rpc::InsertRequest>,
     ) -> Result<tonic::Response<wasm_rpc::Response>, tonic::Status> {
-        println!("[wasm] crdt insert request received");
+        // println!("[wasm] crdt insert request received");
         let temp_request = request.into_inner();
         let client_id = temp_request.client_id;
         let pos = temp_request.pos;
@@ -163,7 +163,7 @@ impl WasmService for WasmRpcServer {
         &self,
         request: tonic::Request<wasm_rpc::DeleteRequest>,
     ) -> Result<tonic::Response<wasm_rpc::Response>, tonic::Status> {
-        println!("[wasm] crdt delete request received");
+        // println!("[wasm] crdt delete request received");
         let temp_request = request.into_inner();
         let client_id = temp_request.client_id;
         let pos = temp_request.pos;
@@ -182,7 +182,7 @@ impl WasmService for WasmRpcServer {
         &self,
         request: tonic::Request<wasm_rpc::GetStringRequest>,
     ) -> Result<tonic::Response<wasm_rpc::GetStringResponse>, tonic::Status> {
-        println!("[wasm] crdt get current content request received");
+        // println!("[wasm] crdt get current content request received");
         let temp_request = request.into_inner();
         let client_id = temp_request.client_id;
 
