@@ -35,6 +35,8 @@ function Doc() {
             setConnected('Connect');
         } else {
             setConnected('Disconnect');
+            // tentitve as logout 
+            wasm.sign_out(id);
         }
     }
 

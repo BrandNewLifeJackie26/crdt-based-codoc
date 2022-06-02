@@ -42,7 +42,7 @@ pub async fn register(client_id: u32, client_ip: String, doc_name: String) {
             });
 
             let response = client.register(request).await.expect("RPC call failed");
-            format!("{:?}", response);
+            println!("{:?}", response);
         }
     }
 }
@@ -59,7 +59,7 @@ pub async fn insert_update(client_id: u32, pos: u32, content: String) {
             });
             let response = client.insert(request).await.expect("RPC call failed");
 
-            format!("{:?}", response);
+            println!("{:?}", response);
         }
     }
 }
@@ -76,7 +76,7 @@ pub async fn delete_update(client_id: u32, pos: u32, len: u32) {
             });
             let response = client.delete(request).await.expect("RPC call failed");
 
-            format!("{:?}", response);
+            println!("{:?}", response);
         }
     }
 }
@@ -92,7 +92,7 @@ pub async fn to_string(client_id: u32) -> String {
             });
             let response = client.get_string(request).await.expect("RPC call failed");
             res = response.into_inner().entire_doc;
-            format!("{:?}", res);
+            println!("{:?}", res);
         }
     }
     return res;
@@ -109,7 +109,7 @@ pub async fn sign_out(client_id: u32) {
             });
             let response = client.end(request).await.expect("RPC call failed");
 
-            format!("{:?}", response);
+            println!("{:?}", response);
         }
     }
 }

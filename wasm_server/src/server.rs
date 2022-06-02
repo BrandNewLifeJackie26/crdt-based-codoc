@@ -192,6 +192,7 @@ impl WasmService for WasmRpcServer {
         if let Some(service) = service {
             res = service.get_content().await;
         }
+        println!("[wasm] entire content is {:?}", res);
         return Ok(tonic::Response::new(wasm_rpc::GetStringResponse {
             entire_doc: res,
         }));
