@@ -78,6 +78,7 @@ impl Doc {
                 self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
             }
         }
+        // println!("insert remote succ");
     }
 
     pub async fn insert_single_block(&mut self, block: &Block) -> bool {
@@ -173,6 +174,7 @@ impl Doc {
             left_id = Some(dest_lock.id.clone());
         }
         store_lock.insert(new_block, left_id).await;
+        // println!("insert succ");
         true
     }
 
