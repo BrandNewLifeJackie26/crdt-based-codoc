@@ -47,6 +47,11 @@ impl SyncTransaction {
         }
     }
 
+    pub async fn get_content(&self) -> String {
+        let doc = self.doc.lock().await;
+        doc.to_string().await
+    }
+
     // request all updates from its peers and deduplicate
     // resolve all conflicts
     pub async fn sync(&self) {

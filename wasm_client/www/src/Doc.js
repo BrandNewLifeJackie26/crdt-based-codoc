@@ -35,6 +35,8 @@ function Doc() {
             setConnected('Connect');
         } else {
             setConnected('Disconnect');
+            // tentitve as logout 
+            wasm.sign_out(id);
         }
     }
 
@@ -53,9 +55,9 @@ function Doc() {
                     )
                     .forEach((change) => {
                         // Operation here
-                        // wasm.delete_update(id, change.rangeOffset, change.rangeLength);
-                        // wasm.insert_update(id, change.rangeOffset, change.text);
-                        // setCode(wasm.to_string());
+                        wasm.delete_update(id, change.rangeOffset, change.rangeLength);
+                        wasm.insert_update(id, change.rangeOffset, change.text);
+                        setCode(wasm.to_string(id));
                         console.log('CHANGE: ', change);
                     });
             });
