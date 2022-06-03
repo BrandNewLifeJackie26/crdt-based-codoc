@@ -503,7 +503,7 @@ mod remote_test {
         };
         updates.push(new_block);
 
-        doc1.insert_remote(updates).await;
+        doc1.insert_remote(updates, 2).await;
 
         assert_eq!(doc1.to_string().await, "1234567NEW2".to_string());
     }
@@ -548,7 +548,7 @@ mod remote_test {
         };
         updates.push(new_block);
 
-        doc1.insert_remote(updates).await;
+        doc1.insert_remote(updates, 2).await;
 
         assert_eq!(doc1.to_string().await, "12NEW234567".to_string());
     }
@@ -603,7 +603,7 @@ mod remote_test {
         };
         updates.push(new_block);
 
-        doc1.insert_remote(updates).await;
+        doc1.insert_remote(updates, 2).await;
 
         assert_eq!(doc1.to_string().await, "1234567NEW2aabbccdd".to_string());
     }
@@ -657,7 +657,7 @@ mod remote_test {
             },
         };
         updates.push(new_block);
-        doc1.insert_remote(updates).await;
+        doc1.insert_remote(updates, 2).await;
 
         let mut updates = vec![];
         let new_block: Block = Block {
@@ -674,7 +674,7 @@ mod remote_test {
         };
         updates.push(new_block);
 
-        doc1.insert_remote(updates).await;
+        doc1.insert_remote(updates, 14).await;
 
         assert_eq!(
             doc1.to_string().await,
@@ -731,7 +731,7 @@ mod remote_test {
             },
         };
         updates.push(new_block);
-        doc1.delete_remote(updates).await;
+        doc1.delete_remote(updates, 14).await;
 
         let mut updates = vec![];
         let new_block: Block = Block {
@@ -748,7 +748,7 @@ mod remote_test {
         };
         updates.push(new_block);
 
-        doc1.insert_remote(updates).await;
+        doc1.insert_remote(updates, 14).await;
 
         assert_eq!(doc1.to_string().await, "1234567aabbccdd".to_string());
     }

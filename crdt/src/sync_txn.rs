@@ -150,6 +150,9 @@ impl SyncTransaction {
             }
         }
 
+        println!("[sync-txn] Update list: {:?}", update_list);
+        println!("[sync-txn] Delete list: {:?}", delete_list);
+
         let mut local_doc = self.doc.lock().await;
         {
             local_doc.insert_remote(update_list, peer_id).await;
@@ -199,6 +202,7 @@ impl SyncTransaction {
             "[sync_txn_compute_diff] {:?} successfully computed all diffs",
             self.client
         );
+        println!("[sync_txn_compute_diff] {:?} ", t_res);
         return t_res;
     }
 

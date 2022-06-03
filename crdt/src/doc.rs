@@ -24,17 +24,10 @@ impl VectorClock {
         todo!()
     }
 
-    fn increment(&mut self, client: ClientID) {
+    fn increment(&mut self, client: ClientID, val: usize) {
         self.clock_map.insert(
             client,
-            self.clock_map.get(&client).cloned().unwrap_or(0) + 1,
-        );
-    }
-
-    pub fn set(&mut self, client: ClientID, value: u32) {
-        self.clock_map.insert(
-            client,
-            self.clock_map.get(&client).cloned().unwrap_or(0) + value,
+            self.clock_map.get(&client).cloned().unwrap_or(0) + val as u32,
         );
     }
 }
@@ -75,6 +68,8 @@ impl Doc {
     // TODO: local operations should also grab mutex of the whole doc (as in SyncTransaction) to avoid concurrency issue
     pub async fn insert_remote(&mut self, update: Updates, peer_id: u32) {
         for block in update.iter() {
+            self.vector_clock
+                .increment(peer_id, block.content.content.len());
             // Try insert pending updates
             self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
                                                 // Try insert current updates
@@ -85,7 +80,6 @@ impl Doc {
                 self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
             }
         }
-        self.vector_clock.set(peer_id, update.len() as u32);
     }
 
     pub async fn insert_single_block(&mut self, block: &Block) -> bool {
@@ -95,8 +89,10 @@ impl Doc {
         // check if the block already exists
 
         {
-            let t_b = self.block_store.lock().await;
+            // If the block already exists, update the block content
+            let mut t_b = self.block_store.lock().await;
             if t_b.exist(block).await {
+                // t_b.update(block).await;
                 return true;
             }
         }
@@ -269,7 +265,6 @@ impl Doc {
     // Insert the content into pos in BlockStore
     // TODO: Arc<Mutex<BlockList>>
     pub async fn insert_local(&mut self, content: Content, pos: u32) {
-        println!("INsert - local");
         let store = self.block_store.clone();
         let mut store_lock = store.lock().await;
 
@@ -368,7 +363,8 @@ impl Doc {
         }
 
         // Update vector clock
-        self.vector_clock.increment(self.client);
+        self.vector_clock
+            .increment(self.client, content.content.len());
     }
 
     // Delete the content of length len from pos
@@ -383,7 +379,6 @@ impl Doc {
                 self.pending_updates.push(block.clone());
             }
         }
-        self.vector_clock.set(peer_id, update.len() as u32);
     }
 
     async fn flush_pending_updates(&mut self) {
@@ -544,7 +539,7 @@ impl Doc {
         }
 
         // Update vector clock
-        self.vector_clock.increment(self.client);
+        // self.vector_clock.increment(self.client, 1);
     }
 
     pub async fn to_string(&self) -> String {

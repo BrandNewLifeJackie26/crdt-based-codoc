@@ -97,6 +97,15 @@ impl BlockStore {
         }
     }
 
+    // Update block content
+    pub async fn update(&mut self, new_block: &Block) {
+        let block = self.block_map.get_mut(&new_block.id);
+        if let Some(block) = block {
+            let mut block_lock = block.lock().await;
+            block_lock.content.content = new_block.content.content.clone();
+        }
+    }
+
     // optimization: Split the block into a part of len
     // and rest of the block
     pub async fn split(&mut self, block_id: BlockID, len: u32) {
