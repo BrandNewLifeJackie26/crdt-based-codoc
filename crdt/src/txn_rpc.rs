@@ -9,6 +9,8 @@ pub struct PullRequest {
 pub struct PullResponse {
     #[prost(string, tag = "1")]
     pub updates: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub client_id: u32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RegisterRequest {

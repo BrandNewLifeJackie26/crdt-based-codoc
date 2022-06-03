@@ -30,6 +30,13 @@ impl VectorClock {
             self.clock_map.get(&client).cloned().unwrap_or(0) + 1,
         );
     }
+
+    pub fn set(&mut self, client: ClientID, value: u32) {
+        self.clock_map.insert(
+            client,
+            self.clock_map.get(&client).cloned().unwrap_or(0) + value,
+        );
+    }
 }
 
 // Doc is the collaborative edited document,
@@ -66,7 +73,7 @@ impl Doc {
 
     /* Local operations */
     // TODO: local operations should also grab mutex of the whole doc (as in SyncTransaction) to avoid concurrency issue
-    pub async fn insert_remote(&mut self, update: Updates) {
+    pub async fn insert_remote(&mut self, update: Updates, peer_id: u32) {
         for block in update.iter() {
             // Try insert pending updates
             self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
@@ -78,13 +85,21 @@ impl Doc {
                 self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
             }
         }
-        // println!("insert remote succ");
+        self.vector_clock.set(peer_id, update.len() as u32);
     }
 
     pub async fn insert_single_block(&mut self, block: &Block) -> bool {
-        println!("insert single block");
+        // println!("insert single block");
         // Try insert, return false if failed, return true if success
         // First find the block corresponding the left_origin and right_origin
+        // check if the block already exists
+
+        {
+            let t_b = self.block_store.lock().await;
+            if t_b.exist(block).await {
+                return true;
+            }
+        }
 
         let left_res = self
             .find_block_idx(block.left_origin.clone(), 0, true)
@@ -159,6 +174,7 @@ impl Doc {
                     continue;
                 }
             } else {
+                i += 1;
                 continue;
             }
         }
@@ -174,7 +190,6 @@ impl Doc {
             left_id = Some(dest_lock.id.clone());
         }
         store_lock.insert(new_block, left_id).await;
-        // println!("insert succ");
         true
     }
 
@@ -357,7 +372,7 @@ impl Doc {
     }
 
     // Delete the content of length len from pos
-    pub async fn delete_remote(&mut self, update: Updates) {
+    pub async fn delete_remote(&mut self, update: Updates, peer_id: u32) {
         for block in update.iter() {
             // Try insert pending updates
             self.flush_pending_updates().await;
@@ -368,6 +383,7 @@ impl Doc {
                 self.pending_updates.push(block.clone());
             }
         }
+        self.vector_clock.set(peer_id, update.len() as u32);
     }
 
     async fn flush_pending_updates(&mut self) {

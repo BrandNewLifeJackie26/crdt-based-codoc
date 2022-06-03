@@ -106,15 +106,21 @@ impl SyncTransaction {
                         let resp = client.get_remote_updates(req).await;
                         match resp {
                             Ok(value) => {
-                                let remote_updates: Result<Updates, serde_json::Error> =
-                                    serde_json::from_str(&value.into_inner().updates);
+                                let resp = value.into_inner();
+                                let remote_updates: Result<
+                                    HashMap<u32, Updates>,
+                                    serde_json::Error,
+                                > = serde_json::from_str(&resp.updates);
+                                let peer_id = resp.client_id;
                                 match remote_updates {
                                     Ok(remote_updates) => {
                                         println!(
                                             "[sync_txn_sync] {:?} successfully get all updates",
                                             self.client
                                         );
-                                        self.update_remote(remote_updates).await;
+                                        for (keypeer_id, ups) in remote_updates.into_iter() {
+                                            self.update_remote(keypeer_id, ups).await;
+                                        }
                                     }
                                     Err(_) => {
                                         println!("[sync_txn_sync] serde deserialization error")
@@ -133,7 +139,7 @@ impl SyncTransaction {
 
     // update peers' modifications on local copy
     // don't need to deal with conflicts
-    pub async fn update_remote(&self, updates: Updates) {
+    pub async fn update_remote(&self, peer_id: u32, updates: Updates) {
         let mut delete_list: Updates = vec![];
         let mut update_list: Updates = vec![];
         for update in updates {
@@ -145,13 +151,15 @@ impl SyncTransaction {
         }
 
         let mut local_doc = self.doc.lock().await;
-        local_doc.insert_remote(update_list).await;
-        local_doc.delete_remote(delete_list).await;
+        {
+            local_doc.insert_remote(update_list, peer_id).await;
+            local_doc.delete_remote(delete_list, peer_id).await;
+        }
     }
 
     // takes in a vector clock, compare with its own vector clock,
     // compute updates that need to be send
-    pub async fn compute_diff(&self, remote_clocks: VectorClock) -> Updates {
+    pub async fn compute_diff(&self, remote_clocks: VectorClock) -> HashMap<u32, Updates> {
         // get its own state vector
         let local_clocks;
         {
@@ -166,16 +174,17 @@ impl SyncTransaction {
                 self.client, remote_clocks
             );
         }
-        let mut res: Updates = vec![];
+        let mut t_res = HashMap::new();
 
         // compute the difference
         for (client_id, local_clock) in local_clocks.clock_map.into_iter() {
+            let mut res: Updates = vec![];
             let remote_clock = remote_clocks.clock_map.get(&client_id);
             match remote_clock {
                 Some(remote_clock) => {
                     if *remote_clock < local_clock {
                         // need to send the remaining part to the counterpart
-                        res.extend(self.construct_updates(*remote_clock + 1, client_id).await);
+                        res.extend(self.construct_updates(*remote_clock, client_id).await);
                     }
                 }
                 None => {
@@ -183,13 +192,14 @@ impl SyncTransaction {
                     res.extend(self.construct_updates(0, client_id).await);
                 }
             }
+            t_res.insert(client_id, res);
         }
 
         println!(
             "[sync_txn_compute_diff] {:?} successfully computed all diffs",
             self.client
         );
-        return res;
+        return t_res;
     }
 
     // given a diff range, consult the block store and find all the updates
@@ -243,6 +253,7 @@ impl SyncTransaction {
             }
             Ok(res) => {
                 let mut temp = self.doc.lock().await;
+                temp.vector_clock.set(self.client, 0);
                 temp.peers = res;
                 println!(
                     "[sync_txn_register]{:?} successfully received up-to-dated peer list {:?}",
@@ -273,6 +284,7 @@ impl TxnService for SyncTransaction {
                     Ok(updates_serialized) => {
                         return Ok(tonic::Response::new(txn_rpc::PullResponse {
                             updates: updates_serialized,
+                            client_id: self.client,
                         }))
                     }
                     Err(_) => {

@@ -11,6 +11,7 @@ message pullRequest {
 
 message pullResponse {
     string updates = 1;
+    uint32 client_id = 2;
 }
 
 message registerRequest {

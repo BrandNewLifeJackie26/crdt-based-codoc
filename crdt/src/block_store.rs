@@ -44,6 +44,16 @@ impl BlockStore {
         }
     }
 
+    pub async fn exist(&self, block: &Block) -> bool {
+        for b in &self.total_store.list {
+            let t_b = b.lock().await;
+            if t_b.id.client == block.id.client && t_b.id.clock == block.id.clock {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Insert the new block to the position
     // right to the block with BlockID left_id
     pub async fn insert(&mut self, block: Block, left_id: Option<BlockID>) {
