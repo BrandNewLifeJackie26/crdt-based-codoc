@@ -255,6 +255,7 @@ impl Doc {
     // Insert the content into pos in BlockStore
     // TODO: Arc<Mutex<BlockList>>
     pub async fn insert_local(&mut self, content: Content, pos: u32) {
+        println!("INsert - local, content: {:?}, pos: {}", &content, &pos);
         let store = self.block_store.clone();
         let mut store_lock = store.lock().await;
 
@@ -289,25 +290,25 @@ impl Doc {
         }
 
         // Create a new block and insert it to total_store
+        let new_block_id = BlockID {
+            client: self.client,
+            clock: new_block_clk,
+        };
         let mut new_block = Block {
-            id: BlockID {
-                client: self.client,
-                clock: new_block_clk,
-            },
+            id: new_block_id.clone(),
             left_origin: None,
             right_origin: None,
             is_deleted: false,
             content: content.clone(),
         };
-        let new_block_id = new_block.id.clone();
 
         // TODO:
         let (left_id, left_content) = {
             if idx > 0 {
                 let left_lock = store_lock.total_store.list[idx - 1].lock().await;
-                (left_lock.id.clone(), left_lock.content.clone())
+                (Some(left_lock.id.clone()), left_lock.content.clone())
             } else {
-                (BlockID::default(), Content::default()) // INVALID
+                (None, Content::default()) // INVALID
             }
         };
         let curr_id = {
@@ -324,7 +325,6 @@ impl Doc {
         {
             // Append to the end
             if idx > 0 {
-                let left_id = Some(left_id);
                 new_block.left_origin = left_id.clone();
                 store_lock.insert(new_block, left_id).await;
             } else {
@@ -332,13 +332,11 @@ impl Doc {
             }
         } else if prev_char_cnt == pos {
             // Insert to i-th position in total_store
-            let left_id = Some(left_id);
             new_block.left_origin = left_id.clone();
             new_block.right_origin = Some(curr_id);
             store_lock.insert(new_block, left_id).await;
         } else {
             // Have to split total_store[i-1]
-            let left_id = Some(left_id);
             let left_content_len = left_content.content.len() as u32;
             new_block.left_origin = left_id.clone();
             new_block.right_origin = Some(BlockID::new(
@@ -358,7 +356,7 @@ impl Doc {
 
         // Squash neighboring blocks
         let latest_clock = self.latest_clock.lock().await;
-        store_lock.squash(new_block_id, *latest_clock).await;
+        // store_lock.squash(new_block_id, *latest_clock).await;
 
         // Update vector clock
         self.vector_clock.increment(self.client);

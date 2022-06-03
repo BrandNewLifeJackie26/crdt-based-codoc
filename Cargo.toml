@@ -20,6 +20,10 @@ zookeeper = "0.5"
 clap = { version = "3.1", features = ["derive"] }
 wasm-bindgen = { version = "0.2" }
 
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+jemallocator = "0.3.2"
+jemalloc-ctl = "0.3.2"
+
 [dev-dependencies]
 env_logger = "0.9"
 

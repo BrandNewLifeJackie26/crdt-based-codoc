@@ -197,7 +197,7 @@ impl BlockStore {
             if middle >= self.total_store.list.len() - 1 {
                 None
             } else {
-                self.total_store.list.get(middle - 1)
+                self.total_store.list.get(middle + 1)
             }
         };
 

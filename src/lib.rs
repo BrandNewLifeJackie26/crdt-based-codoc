@@ -646,3 +646,68 @@ mod zk_test {
         return (txn_rpc, txn_service, txn_background);
     }
 }
+
+#[cfg(test)]
+mod perf_tests {
+    use crate::crdt::block::Content;
+    use crate::crdt::doc::Doc;
+    use crate::crdt::utils::ClientID;
+    use jemalloc_ctl::{epoch, stats};
+    use rand::{distributions::Alphanumeric, thread_rng, Rng};
+
+    extern crate jemallocator;
+
+    #[global_allocator]
+    static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_random_insert_perf_check() {
+        let iterations = 10;
+        for _ in 0..iterations {
+            local_random_insert_perf_check_once().await;
+        }
+    }
+
+    // Local insert to a single doc,
+    // profiling memory v.s. insertion patterns
+    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_random_insert_perf_check_once() {
+        let e = epoch::mib().unwrap();
+        let allocated = stats::allocated::mib().unwrap();
+        let prev_mem = allocated.read().unwrap();
+        println!("Total allocated memory before running: {}", prev_mem);
+
+        let cid = 1 as ClientID;
+        let mut doc = Doc::new("text".to_string(), cid);
+
+        // A ref string and a doc
+        // Randomly pick a position inside the string and insert random content
+        let mut ref_string = "".to_string();
+        let insertions: usize = 10;
+        let max_ins_len: usize = 20;
+        for _ in 0..insertions {
+            let rand_ins_len = thread_rng().gen_range(0..max_ins_len);
+            let rand_pos = thread_rng().gen_range(0..(ref_string.len() + 1));
+            let rand_string: String = thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(rand_ins_len)
+                .map(char::from)
+                .collect();
+
+            doc.insert_local(
+                Content {
+                    content: rand_string.clone(),
+                },
+                rand_pos as u32,
+            )
+            .await;
+            ref_string.insert_str(rand_pos, &rand_string);
+            assert_eq!(doc.to_string().await, ref_string);
+        }
+
+        e.advance().unwrap();
+        let post_mem = allocated.read().unwrap();
+        println!("Total allocated memory: {}", post_mem);
+        println!("Newly allocated memory: {}", post_mem - prev_mem);
+    }
+}
