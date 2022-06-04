@@ -84,7 +84,6 @@ impl Doc {
             if !success {
                 self.pending_updates.push(block.clone());
             } else {
-                println!("????");
                 self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
             }
         }
