@@ -109,13 +109,6 @@ impl Doc {
             .find_block_idx(block.left_origin.clone(), 0, true)
             .await;
         if let Err(_) = left_res {
-            // not exist
-            println!("!!!");
-            // match block.left_origin {
-            //     None => {
-            //         // insert at start
-            //     }
-            // }
             return false;
         }
 
