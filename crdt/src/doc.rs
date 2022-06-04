@@ -1,6 +1,6 @@
 use crate::utils::{ClientID, Peer, Updates};
 use crate::{block::Block, block::BlockID, block::Content, block_store::BlockStore};
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -109,15 +109,17 @@ impl Doc {
             .find_block_idx(block.left_origin.clone(), 0, true)
             .await;
         if let Err(_) = left_res {
+            println!("----!!!!Cannot find left block-----");
             return false;
         }
 
         let left = left_res.unwrap();
         let right_res = self
-            .find_block_idx(block.right_origin.clone(), left, false)
+            .find_block_idx(block.right_origin.clone(), max(left, 0), false)
             .await;
         if let Err(_) = right_res {
             // not exist
+            println!("----!!!!Cannot find right block-----");
             return false;
         }
 
@@ -398,9 +400,16 @@ impl Doc {
                 success = self.insert_single_block(pending).await;
             }
             if !success {
-                new_pending.push(pending.clone()); // TODO: does it take effect?
+                new_pending.push(pending.clone());
+            } else {
+                println!(
+                    "flush pending BLock: {:?}, content: {:?}",
+                    pending.id, pending.content.content
+                );
             }
         }
+        self.pending_updates = new_pending;
+        println!("Remaining: {:?}", self.pending_updates);
     }
 
     pub async fn delete_local(&mut self, pos: u32, len: u32) {
