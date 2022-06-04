@@ -117,8 +117,7 @@ impl Doc {
             .find_block_idx(block.right_origin.clone(), max(left, 0), false)
             .await;
         if let Err(_) = right_res {
-            // not exist
-            println!("----!!!!Cannot find right block-----");
+            println!("----!!! Cannot find right block------");
             return false;
         }
 
@@ -258,6 +257,11 @@ impl Doc {
                     }
                     i += 1;
                 }
+                // if is_left {
+                //     return Err(false);
+                // } else {
+                //     Ok(store_lock.total_store.list.len().try_into().unwrap())
+                // }
                 return Err(false);
             }
             None => {
@@ -386,6 +390,7 @@ impl Doc {
                 println!("delete failed");
                 self.pending_updates.push(block.clone());
             }
+            self.flush_pending_updates().await;
         }
     }
 
@@ -402,13 +407,25 @@ impl Doc {
                 new_pending.push(pending.clone());
             } else {
                 println!(
-                    "flush pending BLock: {:?}, content: {:?}",
+                    "Flush pending BLock: {:?}, content: {:?}",
                     pending.id, pending.content.content
                 );
             }
         }
         self.pending_updates = new_pending;
-        println!("Remaining: {:?}", self.pending_updates);
+        println!("Remaining:\n {:?}", self.pending_updates_to_string());
+    }
+
+    pub fn pending_updates_to_string(&mut self) -> Vec<String> {
+        let mut res = vec![];
+        for pending in self.pending_updates.clone().iter() {
+            let a = format!(
+                "val:{}, clock:{}",
+                pending.content.content, pending.id.clock
+            );
+            res.push(a);
+        }
+        return res;
     }
 
     pub async fn delete_local(&mut self, pos: u32, len: u32) {
