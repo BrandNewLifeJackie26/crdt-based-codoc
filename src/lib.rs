@@ -6,6 +6,7 @@ mod local_tests {
     use crate::crdt::block::Content;
     use crate::crdt::doc::Doc;
     use crate::crdt::utils::ClientID;
+    use rand::{distributions::Alphanumeric, thread_rng, Rng};
 
     // Local insert to a single doc (one letter at a time),
     // there is no need to use transaction if no sync is needed
@@ -95,6 +96,38 @@ mod local_tests {
         )
         .await;
         assert_eq!(doc.to_string().await, "145278936".to_string());
+    }
+
+    // Local insert to a single doc, with random lengths and random positions
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_random_insert() {
+        let cid = 1 as ClientID;
+        let mut doc = Doc::new("text".to_string(), cid);
+
+        // A ref string and a doc
+        // Randomly pick a position inside the string and insert random content
+        let mut ref_string = "".to_string();
+        let insertions: usize = 100;
+        let max_ins_len: usize = 20;
+        for _ in 0..insertions {
+            let rand_ins_len = thread_rng().gen_range(1..max_ins_len);
+            let rand_pos = thread_rng().gen_range(0..(ref_string.len() + 1));
+            let rand_string: String = thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(rand_ins_len)
+                .map(char::from)
+                .collect();
+
+            doc.insert_local(
+                Content {
+                    content: rand_string.clone(),
+                },
+                rand_pos as u32,
+            )
+            .await;
+            ref_string.insert_str(rand_pos, &rand_string);
+            assert_eq!(doc.to_string().await, ref_string);
+        }
     }
 
     // Local insert and delete the whole string
@@ -652,6 +685,7 @@ mod perf_tests {
     use crate::crdt::block::Content;
     use crate::crdt::doc::Doc;
     use crate::crdt::utils::ClientID;
+    use deepsize::DeepSizeOf;
     use jemalloc_ctl::{epoch, stats};
     use rand::{distributions::Alphanumeric, thread_rng, Rng};
 
@@ -660,37 +694,71 @@ mod perf_tests {
     #[global_allocator]
     static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn local_random_insert_perf_check() {
-        let iterations = 10;
-        for _ in 0..iterations {
-            local_random_insert_perf_check_once().await;
+    // #[tokio::test()]
+    // async fn foo_test() {
+    //     for _ in 0..10 {
+    //         let e = epoch::mib().unwrap();
+    //         let allocated = stats::allocated::mib().unwrap();
+    //         let resident = stats::resident::mib().unwrap();
+
+    //         let start_alloc = allocated.read().unwrap();
+    //         let start_res = resident.read().unwrap();
+    //         let rand_size = rand::thread_rng().gen_range(0..1024);
+    //         let _buf = vec![0; rand_size * rand_size];
+    //         e.advance().unwrap();
+    //         let end_alloc = allocated.read().unwrap();
+    //         let end_res = resident.read().unwrap();
+    //         println!(
+    //             "start: ({}, {}), end: ({}, {}), rand_size: {}",
+    //             &start_alloc, &start_res, &end_alloc, &end_res, &rand_size
+    //         );
+    //     }
+    // }
+
+    #[tokio::test()]
+    async fn local_insert_perf() {
+        let insertions: usize = 100;
+        let ins_len: usize = 100;
+
+        let iterations = 100;
+        let mut blocks_sizes = vec![];
+        for i in 0..iterations {
+            println!("--------------- Iteration {} -----------------", &i);
+            blocks_sizes.push(local_insert_perf_once(insertions, ins_len).await);
         }
+
+        println!("---------- Summary -----------");
+        println!(
+            "Number of iterations: {}, average size of doc: {}",
+            iterations,
+            blocks_sizes.iter().sum::<usize>() / iterations
+        );
     }
 
-    // Local insert to a single doc,
+    // Local insert to a single doc, return the difference of resident memory from start to end
     // profiling memory v.s. insertion patterns
-    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn local_random_insert_perf_check_once() {
-        let e = epoch::mib().unwrap();
-        let allocated = stats::allocated::mib().unwrap();
-        let prev_mem = allocated.read().unwrap();
-        println!("Total allocated memory before running: {}", prev_mem);
+    // params:
+    // 1. insertions: number of insertions
+    // 2. ins_len: string length of a single insertion
 
+    // Some attempts
+    // 1. jemalloc allocated/active, unstable outputs
+    // 2. jemalloc measuring dropped object (squashed > unsquashed), maybe more computing resources are needed
+    // 3. get runtime size (pointer?)
+
+    // #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn local_insert_perf_once(insertions: usize, ins_len: usize) -> usize {
         let cid = 1 as ClientID;
         let mut doc = Doc::new("text".to_string(), cid);
 
         // A ref string and a doc
         // Randomly pick a position inside the string and insert random content
         let mut ref_string = "".to_string();
-        let insertions: usize = 10;
-        let max_ins_len: usize = 20;
         for _ in 0..insertions {
-            let rand_ins_len = thread_rng().gen_range(0..max_ins_len);
             let rand_pos = thread_rng().gen_range(0..(ref_string.len() + 1));
             let rand_string: String = thread_rng()
                 .sample_iter(&Alphanumeric)
-                .take(rand_ins_len)
+                .take(ins_len)
                 .map(char::from)
                 .collect();
 
@@ -705,9 +773,32 @@ mod perf_tests {
             assert_eq!(doc.to_string().await, ref_string);
         }
 
-        e.advance().unwrap();
-        let post_mem = allocated.read().unwrap();
-        println!("Total allocated memory: {}", post_mem);
-        println!("Newly allocated memory: {}", post_mem - prev_mem);
+        let store_lock = doc.block_store.lock().await;
+        let mut total_size = 0;
+        for block in &store_lock.total_store.list {
+            let block_lock = block.lock().await;
+            total_size += block_lock.deep_size_of();
+        }
+        println!(
+            "number of blocks: {}, total store size: {}",
+            store_lock.total_store.list.len(),
+            total_size
+        );
+
+        // let e = epoch::mib().unwrap();
+        // let allocated = stats::allocated::mib().unwrap();
+        // let prev_mem = allocated.read().unwrap();
+        // println!("Total allocated memory before dropping doc: {}", &prev_mem);
+
+        // drop(doc);
+
+        // e.advance().unwrap();
+        // let post_mem = allocated.read().unwrap();
+        // let diff_mem = prev_mem as i32 - post_mem as i32;
+        // println!("Total allocated memory after dropping doc: {}", &post_mem);
+        // println!("Doc size: {}", &diff_mem);
+
+        // diff_mem
+        total_size
     }
 }

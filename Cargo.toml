@@ -24,6 +24,8 @@ wasm-bindgen = { version = "0.2" }
 jemallocator = "0.3.2"
 jemalloc-ctl = "0.3.2"
 
+deepsize = "0.2.0"
+
 [dev-dependencies]
 env_logger = "0.9"
 

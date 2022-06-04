@@ -255,7 +255,7 @@ impl Doc {
     // Insert the content into pos in BlockStore
     // TODO: Arc<Mutex<BlockList>>
     pub async fn insert_local(&mut self, content: Content, pos: u32) {
-        println!("INsert - local, content: {:?}, pos: {}", &content, &pos);
+        // println!("INsert - local, content: {:?}, pos: {}", &content, &pos);
         let store = self.block_store.clone();
         let mut store_lock = store.lock().await;
 

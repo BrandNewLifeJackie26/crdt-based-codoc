@@ -1,13 +1,15 @@
 use crate::crdt::utils::ClientID;
+use deepsize::DeepSizeOf;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, sync::Arc};
 use tokio::sync::Mutex;
-#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+
+#[derive(Clone, Serialize, Deserialize, Debug, Default, DeepSizeOf)]
 pub struct Content {
     pub content: String,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Hash, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Hash, Debug, Default, DeepSizeOf)]
 pub struct BlockID {
     pub client: ClientID,
     pub clock: u32,
@@ -44,7 +46,7 @@ pub type BlockPtr = Arc<Mutex<Block>>;
 // Block is the basic building block of doc (e.g. text, xml element, etc.),
 // one block can be split to two blocks,
 // and two blocks can be merged into one
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, DeepSizeOf)]
 pub struct Block {
     pub id: BlockID,
     pub left_origin: Option<BlockID>,

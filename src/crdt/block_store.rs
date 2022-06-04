@@ -2,6 +2,7 @@ use tokio::sync::Mutex;
 
 use crate::crdt::block::{Block, BlockID, BlockPtr, Content};
 use crate::crdt::utils::ClientID;
+use deepsize::DeepSizeOf;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -11,7 +12,6 @@ pub type BlockListPtr = Box<BlockList>;
 // the position in the vector indicates its spatial order
 //
 // i.e. if block represents text, ["1", "2"] represents string "12"
-#[derive(Debug)]
 pub struct BlockList {
     pub list: Vec<BlockPtr>,
 }
