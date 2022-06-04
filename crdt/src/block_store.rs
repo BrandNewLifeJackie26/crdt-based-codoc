@@ -1,7 +1,8 @@
 use tokio::sync::Mutex;
 
 use crate::block::{Block, BlockID, BlockPtr, Content};
-use crate::utils::ClientID;
+use crate::utils::{ClientID, Updates};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -19,6 +20,15 @@ pub struct BlockList {
 impl BlockList {
     pub fn new() -> Self {
         BlockList { list: Vec::new() }
+    }
+
+    pub async fn getList(&self) -> Updates {
+        let mut res = vec![];
+        for block in &self.list {
+            let t_b = block.lock().await;
+            res.push(t_b.clone());
+        }
+        return res;
     }
 }
 

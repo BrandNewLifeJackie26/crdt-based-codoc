@@ -2,7 +2,8 @@ use crate::utils::ClientID;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, sync::Arc};
 use tokio::sync::Mutex;
-#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
 pub struct Content {
     pub content: String,
 }
@@ -44,13 +45,33 @@ pub type BlockPtr = Arc<Mutex<Block>>;
 // Block is the basic building block of doc (e.g. text, xml element, etc.),
 // one block can be split to two blocks,
 // and two blocks can be merged into one
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Block {
     pub id: BlockID,
     pub left_origin: Option<BlockID>,
     pub right_origin: Option<BlockID>,
     pub is_deleted: bool,
     pub content: Content,
+}
+
+impl Ord for Block {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.id == other.id {
+            self.is_deleted.cmp(&other.is_deleted)
+        } else {
+            self.id.cmp(&other.id)
+        }
+    }
+}
+
+impl PartialOrd for Block {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.id == other.id {
+            Some(self.is_deleted.cmp(&other.is_deleted))
+        } else {
+            Some(self.id.cmp(&other.id))
+        }
+    }
 }
 
 impl Block {

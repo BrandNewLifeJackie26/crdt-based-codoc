@@ -1,3 +1,4 @@
+use crate::block::Block;
 use crate::doc::Doc;
 use crate::doc::VectorClock;
 use crate::txn_rpc;
@@ -91,17 +92,19 @@ impl SyncTransaction {
 
             if let Some(new_channel) = real_channel.get(&client.client_id) {
                 let mut client = TxnServiceClient::new(new_channel.clone());
-                let clock_serialized;
+                let block_list_serialized;
                 {
                     let local_doc = self.doc.lock().await;
-                    clock_serialized = serde_json::to_string(&local_doc.vector_clock);
+                    let local_store = local_doc.block_store.lock().await;
+                    block_list_serialized =
+                        serde_json::to_string(&local_store.total_store.getList().await);
                 }
-                match clock_serialized {
+                match block_list_serialized {
                     // serialize the local vector clock send our through rpc
-                    Ok(clock_serialized) => {
+                    Ok(block_list_serialized) => {
                         let req = tonic::Request::new(txn_rpc::PullRequest {
                             client_id: self.client,
-                            vector_clock: clock_serialized,
+                            block_list: block_list_serialized,
                         });
                         let resp = client.get_remote_updates(req).await;
                         match resp {
@@ -150,8 +153,8 @@ impl SyncTransaction {
             }
         }
 
-        println!("[sync-txn] Update list: {:?}", update_list);
-        println!("[sync-txn] Delete list: {:?}", delete_list);
+        // println!("[sync-txn] Update list: {:?}", update_list);
+        // println!("[sync-txn] Delete list: {:?}", delete_list);
 
         let mut local_doc = self.doc.lock().await;
         {
@@ -162,40 +165,45 @@ impl SyncTransaction {
 
     // takes in a vector clock, compare with its own vector clock,
     // compute updates that need to be send
-    pub async fn compute_diff(&self, remote_clocks: VectorClock) -> HashMap<u32, Updates> {
+    pub async fn compute_diff(&self, remote_blocks: Updates) -> HashMap<u32, Updates> {
         // get its own state vector
-        let local_clocks;
+        let local_blocks;
         {
             let local_doc = self.doc.lock().await;
-            local_clocks = local_doc.vector_clock.clone();
+            let local_clocks = local_doc.vector_clock.clone();
             println!(
                 "[sync_txn_cf] {:?} local clock is {:?}",
                 self.client, local_clocks
             );
-            println!(
-                "[sync_txn_cf] {:?} remote clock is {:?}",
-                self.client, remote_clocks
-            );
+            let local_store = local_doc.block_store.lock().await;
+            local_blocks = local_store.total_store.getList().await;
+            // println!(
+            //     "[sync_txn_cf] {:?} remote clock is {:?}",
+            //     self.client, remote_clocks
+            // );
         }
         let mut t_res = HashMap::new();
 
         // compute the difference
-        for (client_id, local_clock) in local_clocks.clock_map.into_iter() {
-            let mut res: Updates = vec![];
-            let remote_clock = remote_clocks.clock_map.get(&client_id);
-            match remote_clock {
-                Some(remote_clock) => {
-                    if *remote_clock < local_clock {
-                        // need to send the remaining part to the counterpart
-                        res.extend(self.construct_updates(*remote_clock, client_id).await);
+        for block in local_blocks {
+            if !remote_blocks.contains(&block.clone()) {
+                let empty_vec = vec![];
+                let t = t_res.get(&block.id.client).clone().unwrap_or(&empty_vec);
+                let mut t_t = t.to_vec();
+                if block.is_deleted {
+                    let com_block = Block::new(
+                        block.id.clone(),
+                        block.left_origin.clone(),
+                        block.right_origin.clone(),
+                        block.content.clone(),
+                    );
+                    if !remote_blocks.contains(&com_block.clone()) {
+                        t_t.push(com_block);
                     }
                 }
-                None => {
-                    // need to forword all they have to the requester
-                    res.extend(self.construct_updates(0, client_id).await);
-                }
+                t_t.push(block.clone());
+                t_res.insert(block.id.client, t_t);
             }
-            t_res.insert(client_id, res);
         }
 
         println!(
@@ -257,7 +265,7 @@ impl SyncTransaction {
             }
             Ok(res) => {
                 let mut temp = self.doc.lock().await;
-                temp.vector_clock.set(self.client, 0);
+                temp.vector_clock.increment(self.client, 0);
                 temp.peers = res;
                 println!(
                     "[sync_txn_register]{:?} successfully received up-to-dated peer list {:?}",
@@ -277,9 +285,9 @@ impl TxnService for SyncTransaction {
         request: tonic::Request<txn_rpc::PullRequest>,
     ) -> Result<tonic::Response<txn_rpc::PullResponse>, tonic::Status> {
         let temp_request = request.into_inner();
-        let vector_string = temp_request.vector_clock;
+        let vector_string = temp_request.block_list;
 
-        let vector_clock = serde_json::from_str::<VectorClock>(&vector_string);
+        let vector_clock = serde_json::from_str::<Updates>(&vector_string);
         match vector_clock {
             Ok(vector_clock) => {
                 let updates = self.compute_diff(vector_clock).await;

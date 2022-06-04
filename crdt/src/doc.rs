@@ -24,7 +24,7 @@ impl VectorClock {
         todo!()
     }
 
-    fn increment(&mut self, client: ClientID, val: usize) {
+    pub fn increment(&mut self, client: ClientID, val: usize) {
         self.clock_map.insert(
             client,
             self.clock_map.get(&client).cloned().unwrap_or(0) + val as u32,
@@ -68,15 +68,23 @@ impl Doc {
     // TODO: local operations should also grab mutex of the whole doc (as in SyncTransaction) to avoid concurrency issue
     pub async fn insert_remote(&mut self, update: Updates, peer_id: u32) {
         for block in update.iter() {
-            self.vector_clock
-                .increment(peer_id, block.content.content.len());
             // Try insert pending updates
             self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
                                                 // Try insert current updates
+            {
+                // If the block already exists, update the block content
+                let t_b = self.block_store.lock().await;
+                if t_b.exist(block).await {
+                    continue;
+                }
+            }
             let success = self.insert_single_block(block).await;
+            self.vector_clock
+                .increment(peer_id, block.content.content.len());
             if !success {
                 self.pending_updates.push(block.clone());
             } else {
+                println!("????");
                 self.flush_pending_updates().await; // TODO: flush every time an insersion happens? Is it possible that current insersion and remote update interleave?
             }
         }
@@ -90,7 +98,7 @@ impl Doc {
 
         {
             // If the block already exists, update the block content
-            let mut t_b = self.block_store.lock().await;
+            let t_b = self.block_store.lock().await;
             if t_b.exist(block).await {
                 // t_b.update(block).await;
                 return true;
@@ -102,6 +110,12 @@ impl Doc {
             .await;
         if let Err(_) = left_res {
             // not exist
+            println!("!!!");
+            // match block.left_origin {
+            //     None => {
+            //         // insert at start
+            //     }
+            // }
             return false;
         }
 

@@ -6,7 +6,7 @@ package txn_rpc;
 
 message pullRequest {
     uint32 client_id = 1;
-    string vector_clock = 2;
+    string block_list = 2;
 }
 
 message pullResponse {

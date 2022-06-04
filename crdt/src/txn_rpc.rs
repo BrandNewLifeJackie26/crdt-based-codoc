@@ -3,7 +3,7 @@ pub struct PullRequest {
     #[prost(uint32, tag = "1")]
     pub client_id: u32,
     #[prost(string, tag = "2")]
-    pub vector_clock: ::prost::alloc::string::String,
+    pub block_list: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PullResponse {
