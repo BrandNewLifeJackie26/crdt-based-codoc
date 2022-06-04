@@ -166,7 +166,7 @@ impl BlockStore {
 
             // Modify the left block
             block_lock.content = left_content;
-            block_lock.right_origin = Some(right_block_id.clone());
+            // block_lock.right_origin = Some(right_block_id.clone());
         }
 
         if let Some(right_block) = right_block {

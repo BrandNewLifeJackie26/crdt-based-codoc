@@ -420,8 +420,8 @@ impl Doc {
         let mut res = vec![];
         for pending in self.pending_updates.clone().iter() {
             let a = format!(
-                "val:{}, clock:{}",
-                pending.content.content, pending.id.clock
+                "val:{}, clock:{}, right: {:?}",
+                pending.content.content, pending.id.clock, pending.right_origin
             );
             res.push(a);
         }
