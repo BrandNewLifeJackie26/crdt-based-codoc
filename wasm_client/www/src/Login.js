@@ -51,7 +51,7 @@ function Login() {
                         onChange={handleChangeIP}
                     />
                 </label>
-                <input type="submit" value="提交" />
+                <input type="submit" value="submit" />
             </form>
         </div>
     );
