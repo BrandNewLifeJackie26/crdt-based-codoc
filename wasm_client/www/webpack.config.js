@@ -9,6 +9,7 @@ const WebpackRequireFrom = require('webpack-require-from');
 const APP_DIR = path.resolve(__dirname, './src');
 const BUILD_DIR = path.resolve(__dirname, './build');
 const MONACO_DIR = path.resolve(__dirname, './node_modules/monaco-editor');
+const ANTD_DIR = path.resolve(__dirname, './node_modules/antd');
 
 module.exports = (env, argv) => {
     return {
@@ -71,25 +72,30 @@ module.exports = (env, argv) => {
                         },
                     ],
                 },
-                {
-                    test: /\.css$/,
-                    include: APP_DIR,
-                    use: [
-                        {
-                            loader: 'style-loader',
-                        },
-                        {
-                            loader: 'css-loader',
-                            options: {
-                                modules: true,
-                                namedExport: true,
-                            },
-                        },
-                    ],
-                },
+                // {
+                //     test: /\.css$/,
+                //     include: APP_DIR,
+                //     use: [
+                //         {
+                //             loader: 'style-loader',
+                //         },
+                //         {
+                //             loader: 'css-loader',
+                //             options: {
+                //                 modules: true,
+                //                 namedExport: true,
+                //             },
+                //         },
+                //     ],
+                // },
                 {
                     test: /\.css$/,
                     include: MONACO_DIR,
+                    use: ['style-loader', 'css-loader'],
+                },
+                {
+                    test: /\.css$/,
+                    include: ANTD_DIR,
                     use: ['style-loader', 'css-loader'],
                 },
             ],

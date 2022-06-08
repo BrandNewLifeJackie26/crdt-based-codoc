@@ -60,6 +60,13 @@ impl BlockStore {
             if t_b.id.client == block.id.client && t_b.id.clock == block.id.clock {
                 return true;
             }
+            // if t_b.id.client == block.id.client
+            //     && block.id.clock < t_b.id.clock
+            //     && block.id.clock + block.content.content.len() as u32 > t_b.id.clock
+            // {
+            //     println!("------THIS WILL NOT INSERT------");
+            //     return true;
+            // }
         }
         return false;
     }

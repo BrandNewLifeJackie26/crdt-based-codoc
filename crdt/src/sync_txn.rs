@@ -185,7 +185,7 @@ impl SyncTransaction {
         let mut t_res = HashMap::new();
 
         // compute the difference
-        for block in local_blocks {
+        for block in local_blocks.clone() {
             if !remote_blocks.contains(&block.clone()) {
                 let empty_vec = vec![];
                 let t = t_res.get(&block.id.client).clone().unwrap_or(&empty_vec);
@@ -210,6 +210,8 @@ impl SyncTransaction {
             "[sync_txn_compute_diff] {:?} successfully computed all diffs",
             self.client
         );
+        println!("[Mine] {:?} ", local_blocks.clone());
+        println!("[Received] {:?}", remote_blocks);
         println!("[sync_txn_compute_diff] {:?} ", t_res);
         return t_res;
     }
