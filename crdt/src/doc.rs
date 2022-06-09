@@ -90,7 +90,7 @@ impl Doc {
     }
 
     pub async fn insert_single_block(&mut self, block: &Block) -> bool {
-        // println!("insert single block");
+        println!("insert single remote block");
         // Try insert, return false if failed, return true if success
         // First find the block corresponding the left_origin and right_origin
         // check if the block already exists
@@ -488,10 +488,6 @@ impl Doc {
             if !curr_is_deleted {
                 pos_limit_right += curr_content.content.len() as i32;
             }
-        }
-        println!("-------Current end is : {:?}", right_idx);
-        {
-            println!("-------total_list is : {:?}", store_lock.total_store.list)
         }
 
         // Delete all blocks in (left_idx, right_idx) directly

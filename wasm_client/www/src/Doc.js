@@ -3,6 +3,7 @@ import MonacoEditor, { EditorDidMount, applyEdits } from 'react-monaco-editor';
 import * as monaco from 'monaco-editor';
 import { MonacoServices } from 'monaco-languageclient';
 import { useParams } from 'react-router-dom';
+import { Tag, Divider, Button } from 'antd';
 import * as wasm from 'wasm-crdt';
 var mutex_js = require('./mutex.js');
 
@@ -10,7 +11,7 @@ function Doc() {
     const myRef = React.createRef();
     const [connected, setConnected] = useState('Connected');
     const [code, setCode] = useState('');
-    const { id } = useParams();
+    const { doc, id } = useParams();
     let mux = true;
 
     const MONACO_OPTIONS = {
@@ -64,7 +65,7 @@ function Doc() {
                         mux = true;
                     });
                 }
-            }, 10000);
+            }, 1000);
             editorModel.onDidChangeContent((event) => {
                 if (mux) {
                     mux = false;
@@ -156,7 +157,26 @@ function Doc() {
     // }, [code]);
 
     return (
-        <div>
+        <div
+            style={{
+                padding: '50px',
+            }}>
+            <span
+                style={{
+                    margin: '10px',
+                }}>
+                Document Name:
+            </span>
+            <Tag>{doc}</Tag>
+            <br />
+            <span
+                style={{
+                    margin: '10px',
+                }}>
+                Client ID:
+            </span>
+            <Tag>{id}</Tag>
+            <Divider plain></Divider>
             <MonacoEditor
                 ref={myRef}
                 width="100%"
@@ -166,7 +186,7 @@ function Doc() {
                 options={MONACO_OPTIONS}
                 editorDidMount={editorDidMount}
             />
-            <button onClick={() => handleClick()}>{connected}</button>
+            <Button onClick={() => handleClick()}>{connected}</Button>
         </div>
     );
 }
